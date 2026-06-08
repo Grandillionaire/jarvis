@@ -2,10 +2,17 @@
 // Pure, unit-testable logic shared by main.js and the test suite.
 // (Extracted so the race-prone bits — routing + sentence segmentation — are actually covered.)
 
-const MODELS = { sonnet: 'claude-sonnet-4-6', opus: 'claude-opus-4-7' };
+// Model tiers, as Claude Code aliases ('sonnet'/'opus') so they always resolve to the latest
+// model your plan supports — no pinned IDs to rot, no source edits when Anthropic ships a new one.
+// Override per machine via env (set in the daemon plist's EnvironmentVariables), e.g. a Pro plan with
+// no Opus access: JARVIS_OPUS_MODEL=sonnet. You can also pin an exact id like 'claude-opus-4-8'.
+const MODELS = {
+  sonnet: process.env.JARVIS_SONNET_MODEL || 'sonnet',
+  opus: process.env.JARVIS_OPUS_MODEL || 'opus',
+};
 
-// Pick the model tier for an utterance: Opus 4.7 for hard work (code, deep reasoning,
-// architecture, analysis); Sonnet 4.6 for everything else — it still reasons. No Haiku.
+// Pick the model tier for an utterance: Opus for hard work (code, deep reasoning, architecture,
+// analysis); Sonnet for everything else — it still reasons. No Haiku.
 function classifyModel(text) {
   const t = (text || '').toLowerCase();
   if (/\b(code|coding|program|function|debug|bug|refactor|repos?\b|git|api|python|javascript|typescript|rust|golang|sql|regex|compile|deploy|terminal|stack ?trace|build|script|class|architect|algorithm|optimi[sz]e|figure out|think through|reason|trade.?off|complex|in.?depth|step.?by.?step|analy[sz]e|hard problem)\b/.test(t)) return MODELS.opus;

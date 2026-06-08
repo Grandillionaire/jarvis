@@ -21,7 +21,10 @@ let finished = false, finishTimer = null;
 const START_RMS = 0.05, KEEP_RMS = 0.03, SILENCE_MS = 700, MAX_MS = 12000;  // 700ms end-of-speech (was 850) — snappier without clipping
 const BARGE_RMS = 0.085, BARGE_FRAMES = 10;
 
-const MODEL_LABEL = { 'claude-sonnet-4-6': 'Sonnet', 'claude-opus-4-7': 'Opus' };
+// Robust to both aliases ('sonnet'/'opus') and full ids ('claude-opus-4-8') so the HUD label
+// keeps working whatever the daemon reports.
+const isOpus = (m) => /opus/i.test(m || '');
+const modelLabel = (m) => isOpus(m) ? 'Opus' : /sonnet/i.test(m || '') ? 'Sonnet' : /haiku/i.test(m || '') ? 'Haiku' : '';
 const TOOL_LABEL = (n) => {
   n = (n || '').toLowerCase();
   if (n.includes('event') || n.includes('calendar')) return 'Checking your calendar';
@@ -89,8 +92,8 @@ window.jarvis.onThinking((p) => {
   if (p.reset) {
     liveTurn = p.turnId; mutedTurn = -1; toolCount = 0; respText = '';
     reasonEl.innerHTML = ''; responseEl.textContent = ''; chipsEl.innerHTML = '';
-    reasonRow((MODEL_LABEL[p.model] || 'Jarvis') + ' engaged', 'model');
-    escalate(p.model === 'claude-opus-4-7' ? 'expanded' : 'active');
+    reasonRow((modelLabel(p.model) || 'Jarvis') + ' engaged', 'model');
+    escalate(isOpus(p.model) ? 'expanded' : 'active');
     refreshVitals();
   } else if (p.tool) {
     resolvePendingRows(); reasonRow(TOOL_LABEL(p.tool)); spawnMotes(6);
@@ -135,7 +138,7 @@ async function refreshVitals() {
   if (!v) return;
   const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
   const mEl = document.getElementById('v-model');
-  if (mEl) { mEl.textContent = MODEL_LABEL[v.model] || '—'; mEl.classList.toggle('opus', v.model === 'claude-opus-4-7'); }
+  if (mEl) { mEl.textContent = modelLabel(v.model) || '—'; mEl.classList.toggle('opus', isOpus(v.model)); }
   set('v-warm', (v.warm || []).length); set('v-lat', v.avgMs ? v.avgMs + 'ms' : '—');
   set('v-turns', v.turnsToday); set('v-mem', v.memCommits);
   set('v-up', v.uptimeS != null ? (v.uptimeS < 3600 ? Math.round(v.uptimeS / 60) + 'm' : Math.round(v.uptimeS / 3600) + 'h') : '—');

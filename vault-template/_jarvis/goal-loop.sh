@@ -11,7 +11,7 @@
 # Run it in a git worktree or container, not your only copy. Supervise the first run.
 set -uo pipefail
 
-GOAL=""; REPO=""; MAX_ITERS=15; MAX_MINS=120; TURN_TIMEOUT=900; CHECK=""; MODEL="claude-sonnet-4-6"; STALE_LIMIT=3
+GOAL=""; REPO=""; MAX_ITERS=15; MAX_MINS=120; TURN_TIMEOUT=900; CHECK=""; MODEL="sonnet"; STALE_LIMIT=3
 usage(){ echo 'Usage: goal-loop.sh "<goal>" [--repo DIR] [--max-iters N] [--max-mins M] [--turn-timeout S] [--check "cmd"] [--model NAME]'; }
 while [ $# -gt 0 ]; do case "$1" in
   --repo) REPO="$2"; shift 2;; --max-iters) MAX_ITERS="$2"; shift 2;; --max-mins) MAX_MINS="$2"; shift 2;;

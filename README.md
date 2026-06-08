@@ -74,7 +74,7 @@ A "Jarvis" wake word is optional via Picovoice; otherwise, tap the orb.
 
 ## Requirements
 
-macOS, on Apple Silicon or Intel. [Claude Code](https://claude.com/claude-code) with a claude.ai login. Node 18+. [Obsidian](https://obsidian.md) with its Local REST API plugin. One Homebrew line:
+macOS, on Apple Silicon or Intel. [Claude Code](https://claude.com/claude-code) on a paid plan (Pro or Max), signed in. Node 18+. [Obsidian](https://obsidian.md) with its Local REST API plugin. One Homebrew line:
 
 ```bash
 brew install ffmpeg whisper-cpp coreutils
