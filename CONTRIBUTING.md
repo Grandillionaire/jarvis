@@ -1,0 +1,36 @@
+# Contributing to Jarvis
+
+Thanks for considering a contribution! Jarvis is a personal AI assistant on Claude Code — issues, ideas,
+and PRs are all welcome.
+
+## Ground rules
+- **Never commit secrets or personal data.** Keys live in `~/.claude/jarvis/*.env` (gitignored); your real
+  vault (`~/Jarvis`) and memory (`~/Jarvis-memory`) are separate, private, and never part of this repo.
+- **Keep the safe defaults safe.** `bypassPermissions`, computer-use MCPs, and the autonomous loop are
+  **opt-in** by design — don't make them default. See [SECURITY.md](SECURITY.md).
+- **Match the surrounding style.** Small, focused commits; no debug artifacts.
+
+## Dev setup
+```bash
+git clone https://github.com/Grandillionaire/jarvis.git && cd jarvis
+cd app && npm install
+node --test          # unit tests (lib.js: routing + sentence segmentation)
+```
+The engine lives in `app/` (Electron overlay + the `daemon.js` brain + `voice.js`). Vault-side logic
+(commands, hooks, scripts) is in `vault-template/_jarvis/`.
+
+## High-value contributions
+- **Linux / Windows ports** — the brain/daemon are portable; the blockers are macOS-only bits (launchd,
+  AppleScript, `afplay`, `say`, `lsappinfo`). PRs that abstract these are very welcome.
+- **More local voice backends** — Piper TTS, faster-whisper, etc.
+- **New MCP "hands"** and slash commands.
+- **Docs, examples, a demo GIF.**
+
+## Pull requests
+1. Fork, branch, make your change.
+2. `node --test` passes and the app still launches.
+3. Describe the change and the "why." If it touches permissions or untrusted-data handling, call that out.
+
+## Reporting bugs / security
+- Bugs: open an issue with steps to reproduce + macOS version.
+- **Security:** please use a private advisory, not a public issue (see [SECURITY.md](SECURITY.md)).

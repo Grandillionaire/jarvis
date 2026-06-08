@@ -1,0 +1,18 @@
+{
+  "_comment": "Example MCP servers for the Jarvis vault. Register with: claude mcp add ... (run from ~/Jarvis).",
+  "_security": "Obsidian is safe. The computer-use servers below (browser, desktop, vision) give the agent real control of your machine — they are COMMENTED OUT by default. Enable deliberately, and read SECURITY.md first.",
+
+  "obsidian": {
+    "how": "Install the Obsidian 'Local REST API' community plugin, then:",
+    "cmd": "claude mcp add -s local --transport http obsidian http://127.0.0.1:27123/mcp/ --header \"Authorization: Bearer <YOUR_OBSIDIAN_REST_KEY>\""
+  },
+
+  "_optional_computer_use_OPT_IN": {
+    "_warning": "These let the agent browse the web, control macOS apps/windows/files, and see your screen. Only enable if you understand the risk (SECURITY.md).",
+    "playwright":      "claude mcp add playwright npx -- -y @playwright/mcp@latest",
+    "macos-automator": "claude mcp add macos-automator npx -- -y --package @steipete/macos-automator-mcp macos-automator-mcp",
+    "peekaboo":        "claude mcp add peekaboo npx -- -y @steipete/peekaboo mcp serve",
+    "time":            "claude mcp add time uvx -- mcp-server-time",
+    "context7":        "claude mcp add --transport http context7 https://mcp.context7.com/mcp"
+  }
+}

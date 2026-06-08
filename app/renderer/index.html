@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src https://api.elevenlabs.io; media-src blob: data:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="state-idle">
+  <canvas id="particles"></canvas>
+  <div id="scanlines"></div>
+
+  <!-- HUD rail: deploys to the left of the orb -->
+  <section id="rail">
+    <div class="panel" id="p-reason">
+      <div class="phead"><span class="brk">⌜</span> REASONING <span class="brk r">⌝</span></div>
+      <div class="pbody" id="reason"></div>
+    </div>
+    <div class="panel" id="p-response">
+      <div class="phead"><span class="brk">⌜</span> RESPONSE <span class="brk r">⌝</span></div>
+      <div class="pbody" id="response"></div>
+      <div id="chips"></div>
+    </div>
+    <div class="panel" id="p-vitals">
+      <div class="phead"><span class="brk">⌜</span> VITALS <span class="brk r">⌝</span></div>
+      <div class="pbody vitals" id="vitals">
+        <div class="v"><label>MODEL</label><span id="v-model">—</span></div>
+        <div class="v"><label>WARM</label><span id="v-warm">—</span></div>
+        <div class="v"><label>LATENCY</label><span id="v-lat">—</span></div>
+        <div class="v"><label>TURNS</label><span id="v-turns">—</span></div>
+        <div class="v"><label>MEMORY</label><span id="v-mem">—</span></div>
+        <div class="v"><label>UPTIME</label><span id="v-up">—</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- orb + identity, bottom-right -->
+  <section id="orbwrap">
+    <div id="close" title="Quit Jarvis (⌘⇧Q)">✕</div>
+    <canvas id="orb"></canvas>
+    <div id="wordmark">J · A · R · V · I · S</div>
+    <div id="caption" class="dim">Starting…</div>
+    <div id="dock"></div>
+  </section>
+
+  <!-- cold-start boot sequence -->
+  <div id="boot"><div id="bootline">INITIALIZING</div></div>
+
+  <script src="orb.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

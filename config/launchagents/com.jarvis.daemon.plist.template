@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Jarvis brain daemon — always-on. install.sh fills {{HOME}} and {{NODE}}. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.jarvis.daemon</string>
+  <key>ProgramArguments</key>
+  <array><string>{{NODE}}</string><string>{{HOME}}/jarvis/app/daemon.js</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- Uncomment to opt into the unrestricted agent (read SECURITY.md, run sandboxed): -->
+    <!-- <key>JARVIS_YOLO</key><string>1</string> -->
+  </dict>
+  <key>StandardOutPath</key><string>{{HOME}}/.claude/jarvis/daemon.out.log</string>
+  <key>StandardErrorPath</key><string>{{HOME}}/.claude/jarvis/daemon.err.log</string>
+</dict></plist>
