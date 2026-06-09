@@ -68,7 +68,7 @@ breaks when Anthropic ships a new version. **Opus access requires a Max plan** �
 
 ## 6. Remote control from your phone — Telegram / Discord (opt-in)
 Talk to Jarvis from anywhere. Remote turns are **sandboxed**: owner-allowlisted, never `bypassPermissions`
-(even with `JARVIS_YOLO=1`), no computer-use, read/search/web/notes only — see SECURITY.md.
+(even with `JARVIS_YOLO=1`), no computer-use, **read-only** (read/search/web — no writes, no shell) — see SECURITY.md.
 
 1. Put your bot token(s) + your own chat/user id in `~/.claude/jarvis/bridge.env` (the installer scaffolds
    it from `config/bridge.env.example`; that file has the step-by-step for getting each value). `chmod 600`.

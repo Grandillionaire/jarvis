@@ -29,10 +29,13 @@ function classifyModel(text) {
 const PROFILES = {
   // the on-machine owner at the mic/overlay: unchanged behaviour, may use bypass only if JARVIS_YOLO=1.
   local: { permissionMode: null, allowedTools: null, trustFraming: false },
-  // anything arriving over a network channel: never bypass, no computer-use, read/search/web/notes/git only.
+  // anything arriving over a network channel: never bypass, no computer-use, and READ-ONLY by default —
+  // read/search/web only. No Write/Edit and no Bash: `git` can execute arbitrary code (e.g. -c core.pager),
+  // and writes could touch dotfiles/launch agents, so injected content in a forwarded message can't escalate.
+  // Widen this deliberately (e.g. add 'Write','Edit' for phone capture) by editing here — see profiles.json.example.
   untrusted: {
     permissionMode: 'acceptEdits',
-    allowedTools: ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'Write', 'Edit', 'Bash(git:*)'],
+    allowedTools: ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'],
     trustFraming: true,
   },
 };

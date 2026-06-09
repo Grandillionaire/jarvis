@@ -25,13 +25,16 @@ test('profile: local keeps full power (no tool allowlist, inherits permission mo
   assert.equal(p.trustFraming, false);
 });
 
-test('profile: untrusted is sandboxed (no bypass, restricted tools, framed)', () => {
+test('profile: untrusted is sandboxed (no bypass, READ-ONLY tools, framed)', () => {
   const p = resolveProfile('untrusted');
   assert.equal(p.name, 'untrusted');
   assert.equal(p.permissionMode, 'acceptEdits');     // never bypassPermissions
   assert.ok(Array.isArray(p.allowedTools) && p.allowedTools.length);
-  assert.ok(!p.allowedTools.includes('Bash'), 'no unrestricted Bash');
-  assert.ok(!p.allowedTools.some((t) => t === 'Bash(*)' || /Bash\((?!git:)/.test(t)), 'only git Bash');
+  assert.ok(p.allowedTools.includes('Read'));
+  // read-only by default: no writes, no shell of any kind (git can execute arbitrary code)
+  for (const banned of ['Write', 'Edit', 'NotebookEdit'])
+    assert.ok(!p.allowedTools.includes(banned), 'no ' + banned);
+  assert.ok(!p.allowedTools.some((t) => /^Bash/.test(t)), 'no Bash at all (git can exec)');
   assert.equal(p.trustFraming, true);
 });
 

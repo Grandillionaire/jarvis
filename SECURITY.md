@@ -38,16 +38,18 @@ Remote access is **opt-in** and ships off. When you enable a bridge, it is sandb
   a restricted permission **profile** (`resolveProfile` in `app/lib.js`, **fail-closed** — any unknown
   channel resolves to `untrusted`, never `local`). The `untrusted` profile **cannot reach
   `bypassPermissions` even when `JARVIS_YOLO=1`**, runs `--strict-mcp-config` (no browser/desktop/vision
-  hands), and is limited to a read/search/web/notes/git tool allowlist — **no unrestricted shell, no
-  send/delete.** Only the local mic/overlay (which sends no channel) gets full power.
+  hands), and is **read-only** — a read/search/web allowlist with **no `Write`/`Edit` and no `Bash` at all**
+  (`git` itself can execute arbitrary code, and writes could touch dotfiles/launch agents). Only the local
+  mic/overlay (which sends no channel) gets full power.
 - **Untrusted-data framing + audit + rate limit.** Inbound text is wrapped in an untrusted-data envelope
   (prompt-injection mitigation), every turn is appended to `~/.claude/jarvis/bridge-audit.log`, and a
   token-bucket rate limiter bounds a flood/injection loop.
 - **Risky actions are deferred, not inline.** send/delete/push/calendar-write are withheld from the
   remote profile by design. (A future opt-in approve/deny handshake is the sanctioned way to allow them.)
 
-Net: a remote message can ask Jarvis to read, search, look things up, and take notes — it **cannot** run
-arbitrary shell, touch your desktop, or send on your behalf, no matter what the message says.
+Net: a remote message can ask Jarvis to read your vault, search, and look things up on the web — it
+**cannot** write files, run any shell, touch your desktop, or send on your behalf, no matter what the
+message says. (Phone capture, i.e. letting it write notes, is a deliberate opt-in you enable in `app/lib.js`.)
 
 ## Secrets — where they live, never commit them
 **By default Jarvis uses no API keys at all** — voice is fully local (macOS `say` + whisper.cpp), so a

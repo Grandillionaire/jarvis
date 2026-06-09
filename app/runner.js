@@ -35,7 +35,7 @@ function argvFor(job) {
   const prompt = String(s.prompt || s.goal || '') +
     '\n\nWhen done, write your findings to a logo-headed note in 03_Resources/ of this vault and open it.';
   return [CLAUDE_BIN, '-p', prompt, '--model', String(s.model || 'sonnet'), '--permission-mode', 'acceptEdits',
-    '--allowedTools', 'Read,Grep,Glob,WebFetch,WebSearch,Write,Edit,Bash(git:*)', '--strict-mcp-config'];
+    '--allowedTools', 'Read,Grep,Glob,WebFetch,WebSearch,Write,Edit', '--strict-mcp-config']; // note-writing, no shell
 }
 
 function run(job) {

@@ -14,8 +14,8 @@
     "_for": "anything arriving over a network channel (Telegram/Discord/etc.) — treated as untrusted input",
     "permissionMode": "acceptEdits",
     "_permissionMode": "NEVER bypassPermissions, regardless of JARVIS_YOLO. No unrestricted shell.",
-    "allowedTools": ["Read", "Grep", "Glob", "WebFetch", "WebSearch", "Write", "Edit", "Bash(git:*)"],
-    "_allowedTools": "read/search/web/notes/git only — no unrestricted Bash, no send/delete, and --strict-mcp-config disables all computer-use MCP hands. Tighten further (e.g. drop Write/Edit for read-only) by editing PROFILES in app/lib.js.",
+    "allowedTools": ["Read", "Grep", "Glob", "WebFetch", "WebSearch"],
+    "_allowedTools": "READ-ONLY by default: read/search/web only. No Write/Edit and no Bash (git can execute arbitrary code; writes could touch dotfiles/launch agents), so injected content in a forwarded message can't escalate. --strict-mcp-config also disables all computer-use MCP hands. To allow phone capture, add 'Write','Edit' by editing PROFILES in app/lib.js — a deliberate widening.",
     "trustFraming": true,
     "_trustFraming": "wraps the message in an untrusted-data envelope so prompt-injection in forwarded content is contained."
   }
