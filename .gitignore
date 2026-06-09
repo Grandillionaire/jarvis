@@ -11,6 +11,9 @@
 api-keys.env
 tts.env
 obsidian.env
+bridge.env
+bridge-audit.log
+jobs/
 
 # --- dependencies / build ---
 node_modules/

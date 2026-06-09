@@ -12,11 +12,11 @@ const store = require('./jobstore');
 const VAULT = path.join(os.homedir(), process.env.JARVIS_VAULT_DIR || 'Jarvis');
 const CLAUDE_BIN = process.env.JARVIS_CLAUDE_BIN || ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', '/usr/bin/claude']
   .find((p) => { try { fs.accessSync(p); return true; } catch { return false; } }) || 'claude';
-const NOTIFY = path.join(__dirname, 'bridge', 'telegram-bridge.js'); // best-effort; a no-op if no bridge.env
+const NOTIFY = path.join(__dirname, 'bridge', 'notify.js'); // best-effort; a no-op if no bridge.env
 
 // one-way phone push for "job done / needs you". Single-destination by construction (see the bridge).
 function notify(text) {
-  try { const p = spawn(process.execPath, [NOTIFY, '--notify', text], { detached: true, stdio: 'ignore', env: process.env }); p.unref(); } catch {}
+  try { const p = spawn(process.execPath, [NOTIFY, text], { detached: true, stdio: 'ignore', env: process.env }); p.unref(); } catch {}
 }
 
 function argvFor(job) {

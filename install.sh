@@ -46,7 +46,7 @@ if [ -f "$MODELDIR/ggml-base.en.bin" ]; then ok "whisper model present"; else
     warn "model download failed — re-run, or set STT_PROVIDER=elevenlabs"
   fi
 fi
-for f in tts.env api-keys.env; do
+for f in tts.env api-keys.env bridge.env; do
   if [ -f "$JDIR/$f" ]; then ok "$f already exists (kept)"; else cp "$REPO/config/$f.example" "$JDIR/$f"; chmod 600 "$JDIR/$f"; ok "wrote $JDIR/$f (add your keys)"; fi
 done
 
