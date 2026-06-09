@@ -32,7 +32,7 @@ Tap the orb and talk. That is a full voice assistant running on nothing but your
 
 ## How it works
 
-The Electron overlay is a thin client: the arc-reactor HUD, an audio-reactive orb, multiple themes. The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. Most turns route to Sonnet; the hard ones, code and deep reasoning, escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
+The Electron overlay is a thin client: the arc-reactor HUD, an audio-reactive orb, multiple themes. The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, so it rides your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones, code and deep reasoning, escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
 
 ```mermaid
 flowchart LR
@@ -80,7 +80,9 @@ macOS, on Apple Silicon or Intel. [Claude Code](https://claude.com/claude-code) 
 brew install ffmpeg whisper-cpp coreutils
 ```
 
-The installer checks all of it and downloads the ~142 MB local speech model on first run.
+The installer checks all of it and downloads the ~142 MB local speech model on first run. Sign in to Claude Code once before you start Jarvis.
+
+The brain uses Claude Code's model aliases, so it always tracks the latest models your plan supports. Opus escalation needs a **Max** plan; on **Pro**, set `JARVIS_OPUS_MODEL=sonnet` to keep everything on Sonnet (see [docs/SETUP.md](docs/SETUP.md)).
 
 ## A note on power
 
