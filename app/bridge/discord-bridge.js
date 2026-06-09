@@ -12,7 +12,7 @@ const OWNER = cfg.DISCORD_OWNER_USER_ID;
 const INTENTS = (1 << 12) | (1 << 15); // DIRECT_MESSAGES + MESSAGE_CONTENT
 const bucket = new core.TokenBucket(8, 20);
 
-let ws, hb, seq = null, acked = true;
+let ws, hb, seq = null, acked = true, backoff = 1000;
 
 function send(o) { try { ws.send(JSON.stringify(o)); } catch {} }
 
@@ -26,6 +26,7 @@ async function handle(content) {
 function onMessage(p) {
   if (p.s != null) seq = p.s;
   if (p.op === 10) { // hello -> heartbeat + identify
+    if (!p.d || !p.d.heartbeat_interval) { try { ws.close(); } catch {} return; } // guard malformed HELLO
     const iv = p.d.heartbeat_interval;
     clearInterval(hb);
     hb = setInterval(() => { if (!acked) { try { ws.close(); } catch {} return; } acked = false; send({ op: 1, d: seq }); }, iv);
@@ -46,9 +47,9 @@ function onMessage(p) {
 
 function connect() {
   ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-  ws.addEventListener('open', () => core.audit({ ev: 'discord_open' }));
+  ws.addEventListener('open', () => { backoff = 1000; core.audit({ ev: 'discord_open' }); });
   ws.addEventListener('message', (ev) => { let p; try { p = JSON.parse(ev.data); } catch { return; } onMessage(p); });
-  ws.addEventListener('close', () => { clearInterval(hb); acked = true; core.audit({ ev: 'discord_close' }); setTimeout(connect, 3000); });
+  ws.addEventListener('close', () => { clearInterval(hb); acked = true; core.audit({ ev: 'discord_close', retryMs: backoff }); setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 60000); }); // exp backoff, reset on open
   ws.addEventListener('error', () => { try { ws.close(); } catch {} });
 }
 

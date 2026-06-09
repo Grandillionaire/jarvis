@@ -30,20 +30,28 @@ test('profile: untrusted is sandboxed (no bypass, READ-ONLY tools, framed)', () 
   assert.equal(p.name, 'untrusted');
   assert.equal(p.permissionMode, 'acceptEdits');     // never bypassPermissions
   assert.ok(Array.isArray(p.allowedTools) && p.allowedTools.length);
-  assert.ok(p.allowedTools.includes('Read'));
-  // read-only by default: no writes, no shell of any kind (git can execute arbitrary code)
-  for (const banned of ['Write', 'Edit', 'NotebookEdit'])
+  // read-only, no network egress: exactly Read/Grep/Glob — no write, no shell, no web (exfil) tool
+  assert.deepEqual([...p.allowedTools].sort(), ['Glob', 'Grep', 'Read']);
+  for (const banned of ['Write', 'Edit', 'NotebookEdit', 'WebFetch', 'WebSearch'])
     assert.ok(!p.allowedTools.includes(banned), 'no ' + banned);
   assert.ok(!p.allowedTools.some((t) => /^Bash/.test(t)), 'no Bash at all (git can exec)');
   assert.equal(p.trustFraming, true);
 });
 
-test('profile: FAIL-CLOSED — unknown/empty channel resolves to untrusted, never local', () => {
+test('profile: FAIL-CLOSED — unknown/empty/non-string channel resolves to untrusted, never local', () => {
+  // strings that aren't exactly 'local'
   for (const name of ['telegram', 'discord', 'whatsapp', '', 'LOCAL', 'admin', undefined, null, 'local '])
     assert.equal(resolveProfile(name).name, 'untrusted', JSON.stringify(name));
-  // and the fail-closed result must never carry local's full power
-  for (const name of ['telegram', 'nonsense', undefined])
-    assert.notEqual(resolveProfile(name).permissionMode, null, JSON.stringify(name));
+  // type-coercion attacks: a non-string must NOT key-coerce its way to the local profile
+  for (const name of [['local'], [['local']], { toString: () => 'local' }, 0, { name: 'local' }])
+    assert.equal(resolveProfile(name).name, 'untrusted', JSON.stringify(name));
+  // and every fail-closed result must carry the restricted controls (never local's nulls)
+  for (const name of ['telegram', ['local'], { toString: () => 'local' }, undefined, 0]) {
+    const p = resolveProfile(name);
+    assert.notEqual(p.permissionMode, null, 'permMode set: ' + JSON.stringify(name));
+    assert.ok(Array.isArray(p.allowedTools) && p.allowedTools.length, 'allowlist set: ' + JSON.stringify(name));
+    assert.equal(p.trustFraming, true, 'framed: ' + JSON.stringify(name));
+  }
 });
 
 test('segment: emits only complete sentences, keeps remainder', () => {

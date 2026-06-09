@@ -58,7 +58,7 @@ Everything below is opt-in and guard-railed. Jarvis ships without unrestricted p
 - **Hands and eyes.** Drives the browser with Playwright, controls macOS apps, windows, and files, and sees the screen.
 - **Visuals.** Ask for a chart or diagram and it makes one, in matplotlib, Mermaid, or interactive HTML.
 - **Morning brief.** A spoken 8am rundown of your calendar, inbox, and open loops, with no window open.
-- **Phone control.** Drive it from Telegram or Discord, owner-allowlisted. Remote turns are sandboxed and read-only by default — a message can read your vault, search, and look things up, but can't write files, run shell, or touch your machine.
+- **Phone control.** Drive it from Telegram or Discord, owner-allowlisted. Remote turns are sandboxed and read-only by default — a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in).
 - **Background jobs.** Hand off long work (autonomous coding, deep research) to detached, cancellable jobs that don't tie up the conversation and push your phone when they're done.
 - **Autonomous coding.** A `/goal` loop with caps, timeouts, and kill-switches. It never pushes.
 

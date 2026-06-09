@@ -64,11 +64,12 @@ class TokenBucket {
 
 function httpsJson(opts, body) {
   return new Promise((resolve, reject) => {
-    const req = https.request(opts, (res) => {
+    const req = https.request({ timeout: 70000, ...opts }, (res) => { // timeout so a stuck long-poll can't hang the bridge forever
       let b = ''; res.on('data', (d) => (b += d));
       res.on('end', () => { try { resolve({ status: res.statusCode, json: b ? JSON.parse(b) : null }); } catch { resolve({ status: res.statusCode, json: null, raw: b }); } });
     });
     req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
     if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
     req.end();
   });

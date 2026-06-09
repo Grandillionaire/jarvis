@@ -68,9 +68,10 @@ function cancel(id) {
   const j = store.get(id);
   if (!j || !j.pid || !store.isAlive(j.pid)) return false;
   store.update(id, { state: 'cancelling' });
-  try { process.kill(-j.pid, 'SIGTERM'); } catch { try { process.kill(j.pid, 'SIGTERM'); } catch {} }
   const pid = j.pid;
-  setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch {} }, 8000);
+  try { process.kill(-pid, 'SIGTERM'); } catch { try { process.kill(pid, 'SIGTERM'); } catch {} }
+  // re-check liveness before the hard kill so a reaped+reused pid isn't signalled by mistake
+  setTimeout(() => { if (store.isAlive(pid)) { try { process.kill(-pid, 'SIGKILL'); } catch {} } }, 8000);
   return true;
 }
 
