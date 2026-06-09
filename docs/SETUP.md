@@ -66,11 +66,38 @@ breaks when Anthropic ships a new version. **Opus access requires a Max plan** �
   ⚠️ This is an unrestricted shell agent — run it in a VM / container / throwaway account.
 - **Autonomous `/goal` loop:** requires an explicit `--repo` pointing at an isolated git worktree.
 
+## 6. Remote control from your phone — Telegram / Discord (opt-in)
+Talk to Jarvis from anywhere. Remote turns are **sandboxed**: owner-allowlisted, never `bypassPermissions`
+(even with `JARVIS_YOLO=1`), no computer-use, read/search/web/notes only — see SECURITY.md.
+
+1. Put your bot token(s) + your own chat/user id in `~/.claude/jarvis/bridge.env` (the installer scaffolds
+   it from `config/bridge.env.example`; that file has the step-by-step for getting each value). `chmod 600`.
+2. Load the bridge(s) — they were written to `~/Library/LaunchAgents` by the installer but not started:
+   ```bash
+   launchctl load -w ~/Library/LaunchAgents/com.jarvis.telegram.plist   # Telegram (Node 18+)
+   launchctl load -w ~/Library/LaunchAgents/com.jarvis.discord.plist    # Discord (Node 22+, MESSAGE CONTENT intent)
+   ```
+3. DM your bot. Only your single allowlisted id is ever answered; everyone else is dropped before the brain
+   sees anything. Every turn is appended to `~/.claude/jarvis/bridge-audit.log` and rate-limited.
+
+Once a bridge is configured, autonomous jobs and the morning brief also **push to your phone** when they
+finish (one-way, owner-only — there's no way to make it message anyone else).
+
+## 7. Background jobs (so long work doesn't tie up the conversation)
+Ask Jarvis (by voice or chat) to run something in the background and it dispatches a detached, cancellable
+job via the `/job` command. Coding jobs run through the guard-railed `/goal` loop (isolated `--repo`, never
+pushes); research jobs run sandboxed and drop a note in your vault. Manage them over the socket:
+```bash
+curl -s --unix-socket ~/.claude/jarvis/daemon.sock http://x/jobs                 # list
+curl -s --unix-socket ~/.claude/jarvis/daemon.sock http://x/job/<id>             # status + log tail
+curl -s -X POST --unix-socket ~/.claude/jarvis/daemon.sock http://x/job/<id>/cancel
+```
+
 ## Permissions Jarvis may ask macOS for
 Microphone (voice), and — only if you enable computer-use — Accessibility, Automation, Screen Recording,
 Calendars, Reminders. Grant them to the app/terminal hosting the agent.
 
 ## Updating / uninstalling
 - Update: `git pull && cd app && npm install`.
-- Uninstall: `launchctl unload` the three `com.jarvis.*` plists and delete them; remove the cloned repo (NOT your `~/Jarvis` vault — different capitalisation). Your
+- Uninstall: `launchctl unload` the `com.jarvis.*` plists and delete them; remove the cloned repo (NOT your `~/Jarvis` vault — different capitalisation). Your
   `~/Jarvis` vault and `~/Jarvis-memory` are yours to keep or delete.
