@@ -8,6 +8,7 @@
 //   urfael reminders                           list reminders
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
+//   urfael stop                                abort the current in-flight turn (also: Ctrl+C while asking)
 //   urfael health | shutdown
 const http = require('http');
 const fs = require('fs');
@@ -42,6 +43,10 @@ async function ensureDaemon() {
 
 function ask(text) {
   return new Promise((resolve) => {
+    // Ctrl+C while a turn streams: stop the brain's in-flight turn, then leave cleanly.
+    const onSigint = () => { req('POST', '/abort').catch(() => {}).then(() => process.exit(0)); };
+    process.on('SIGINT', onSigint);
+    const done = () => { process.removeListener('SIGINT', onSigint); resolve(); };
     const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' } }, (res) => {
       let buf = '', started = false, lastTool = '';
       res.on('data', (d) => {
@@ -52,12 +57,12 @@ function ask(text) {
           let e; try { e = JSON.parse(ln); } catch { continue; }
           if (e.kind === 'thinking' && e.tool && e.tool !== lastTool) { lastTool = e.tool; process.stderr.write(dim(`  ⟳ ${e.tool}\n`)); }
           else if (e.kind === 'thinking' && e.delta) { if (!started) { started = true; } process.stdout.write(e.delta); }
-          else if (e.kind === 'done') { process.stdout.write('\n' + dim(`— ${e.model || ''}${e.ms ? ' · ' + (e.ms / 1000).toFixed(1) + 's' : ''}\n`)); resolve(); }
+          else if (e.kind === 'done') { process.stdout.write('\n' + dim(`— ${e.aborted ? 'stopped' : (e.model || '')}${e.ms ? ' · ' + (e.ms / 1000).toFixed(1) + 's' : ''}\n`)); done(); }
         }
       });
-      res.on('end', resolve);
+      res.on('end', done);
     });
-    r.on('error', () => { console.error('brain unreachable'); resolve(); });
+    r.on('error', () => { console.error('brain unreachable'); done(); });
     r.end(JSON.stringify({ text }));
   });
 }
@@ -88,6 +93,7 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
 
   if (!(await ensureDaemon())) { console.error('✗ brain offline and could not be started'); process.exit(1); }
 
+  if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }
   if (cmd === 'health') { console.log(JSON.stringify(await req('GET', '/health'))); return; }
   if (cmd === 'shutdown') { await req('POST', '/shutdown').catch(() => {}); console.log('brain stopped'); return; }
   if (cmd === 'status') {

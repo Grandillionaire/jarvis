@@ -324,7 +324,7 @@ function convoLoop() {
   }
   requestAnimationFrame(convoLoop);
 }
-function barge() { mutedTurn = liveTurn; stopPlayback(); beginListening(); }
+function barge() { mutedTurn = liveTurn; if (window.urfael.abort) window.urfael.abort(); stopPlayback(); beginListening(); }
 function startRec(now) {
   chunks = []; recorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
@@ -383,7 +383,7 @@ function releaseMic() {
 }
 function resetIdle(msg) { convo = false; stopPlayback(); releaseMic(); window.urfael.wakeDone(); setState('idle', msg); scheduleCollapse(); }
 function endConversation() {
-  convo = false; recording = false; stopPlayback();
+  convo = false; recording = false; if (window.urfael.abort) window.urfael.abort(); stopPlayback();
   if (recorder && recorder.state !== 'inactive') { try { recorder.onstop = null; recorder.stop(); } catch {} }
   releaseMic(); window.urfael.wakeDone(); window.urfael.conversationEnd();
   setState('idle', `Stopped — say “${wakeLabel()}”`); scheduleCollapse();

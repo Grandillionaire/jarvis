@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('urfael', {
   config: () => ipcRenderer.invoke('urfael:config'),
   ask: (text) => ipcRenderer.invoke('urfael:ask', text),
+  abort: () => ipcRenderer.invoke('urfael:abort'),        // stop the current in-flight LOCAL turn
   vitals: () => ipcRenderer.invoke('urfael:vitals'),
   tts: (text) => ipcRenderer.invoke('urfael:tts', text),   // local TTS → audio bytes
   stt: (buf) => ipcRenderer.invoke('urfael:stt', buf),     // local STT → transcript text
@@ -35,4 +36,5 @@ contextBridge.exposeInMainWorld('urfael', {
   onTheme: (cb) => ipcRenderer.on('urfael:theme', (_e, t) => cb(t)),
   onGaze: (cb) => ipcRenderer.on('urfael:gaze', (_e, g) => cb(g)),
   onHudToggle: (cb) => ipcRenderer.on('urfael:hud-toggle', () => cb()),
+  onMenu: (cb) => ipcRenderer.on('urfael:menu', (_e, a) => cb(a)), // native menu app-actions (view:*, new, settings, stop, toggle-orb, about)
 });

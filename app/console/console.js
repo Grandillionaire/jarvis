@@ -1,7 +1,7 @@
 'use strict';
 // Urfael Console — the desktop-app surface. Chat with streamed tool activity, the session archive,
 // reminders, jobs, hearth, settings. Same daemon, same brain as the orb; this is just a bigger window
-// onto it. Keyboard-first: ⌘1–6 views, ⌘K search, Enter sends, ↑ recalls.
+// onto it. Keyboard-first: ⌘1–6 views, ⌘K/⌘P command palette, ⌘F archive search, Enter sends, ↑ recalls.
 
 const $ = (s) => document.querySelector(s);
 const VIEWS = ['converse', 'archive', 'reminders', 'jobs', 'hearth', 'settings'];
@@ -21,8 +21,11 @@ function show(v) {
 }
 document.querySelectorAll('.nav').forEach((b) => b.addEventListener('click', () => show(b.dataset.view)));
 document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if ((e.metaKey || e.ctrlKey) && (k === 'k' || k === 'p')) { e.preventDefault(); Palette.toggle(); return; } // ⌘K / ⌘P → command palette
+  if (Palette.isOpen()) return;                                                                                // palette is modal — let it own the keys
   if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '6') { e.preventDefault(); show(VIEWS[+e.key - 1]); }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); show('archive'); $('#arch-search').focus(); }
+  if ((e.metaKey || e.ctrlKey) && k === 'f' && view === 'archive') { e.preventDefault(); $('#arch-search').focus(); } // ⌘F → archive search (when in view)
 });
 
 // ---- converse ---------------------------------------------------------------
@@ -73,11 +76,25 @@ function renderLive() {
 let renderQueued = false;
 function queueRender() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(() => { renderQueued = false; renderLive(); }); } }
 
+// Send button doubles as Stop while a turn is in flight — one affordance, two states.
+function setAsking(on) {
+  asking = on;
+  sendBtn.classList.toggle('stop', on);
+  sendBtn.textContent = on ? '■' : '↵';
+  sendBtn.setAttribute('aria-label', on ? 'Stop' : 'Send');
+}
+async function abort() {
+  if (!asking) return;
+  try { await window.urfael.abort(); } catch {}
+  // the daemon emits a {done, aborted} event which finishLive renders; this is a belt-and-braces fallback
+}
+
 async function send() {
   const text = input.value.trim();
-  if (!text || asking) return;
+  if (asking) { abort(); return; }   // clicking Send while asking = Stop
+  if (!text) return;
   lastSent = text; input.value = ''; autosize();
-  asking = true; sendBtn.disabled = true;
+  setAsking(true);
   addMsg('you', text);
   const pinned = nearBottom();
   liveMsg = document.createElement('div'); liveMsg.className = 'msg urfael';
@@ -89,17 +106,21 @@ async function send() {
 }
 function finishLive(r) {
   const wasMine = asking;
-  asking = false; sendBtn.disabled = false;
+  setAsking(false);
   if (!liveMsg) return;
   const pinned = nearBottom();
+  // the done event carries aborted:true; the awaited ask() resolves without it, so also detect '(stopped)' text
+  const stopped = !!(r && (r.aborted || r.text === '(stopped)'));
   const { remark, body } = splitSpoken((r && r.text) || liveText);
-  if (wasMine) speak(remark || (body || '').split(/(?<=[.!?])\s/)[0]);
-  liveMsg.querySelector('.remark').textContent = remark;
-  liveMsg.querySelector('.text').textContent = body || '(no reply — is the brain awake?)';
+  if (wasMine && !stopped) speak(remark || (body || '').split(/(?<=[.!?])\s/)[0]);
+  liveMsg.querySelector('.remark').textContent = stopped ? '' : remark;
+  liveMsg.classList.toggle('stopped', stopped);
+  liveMsg.querySelector('.text').textContent = stopped ? (body || '(stopped)') : (body || '(no reply — is the brain awake?)');
   for (const tr of liveTools) tr.classList.add('done');
-  if (r && r.model) liveMsg.querySelector('.meta').textContent = r.model;
+  if (r && r.model && !stopped) liveMsg.querySelector('.meta').textContent = r.model;
   liveMsg = null; liveText = '';
   follow(pinned);
+  if (stopped && wasMine && view === 'converse') input.focus();   // return the cursor after a Stop
 }
 
 // live events from the daemon (also mirrors voice turns started at the orb)
@@ -154,11 +175,12 @@ async function speak(text) {
     const src = actx.createBufferSource(); src.buffer = audio; src.connect(actx.destination); src.start();
   } catch {}
 }
-muteBtn.addEventListener('click', () => {
+function toggleVoice() {
   voiceOn = !voiceOn;
   muteBtn.textContent = voiceOn ? '🔊' : '🔇'; muteBtn.classList.toggle('off', !voiceOn);
   window.urfael.setConfig('CONSOLE_VOICE', voiceOn ? '1' : '0');
-});
+}
+muteBtn.addEventListener('click', toggleVoice);
 
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; }
 input.addEventListener('input', autosize);
@@ -306,8 +328,54 @@ async function loadSettings() {
 const jump = $('#jump');
 thread.addEventListener('scroll', () => { jump.hidden = nearBottom(); });
 jump.addEventListener('click', () => { thread.scrollTop = thread.scrollHeight; jump.hidden = true; });
-document.querySelectorAll('.sug').forEach((b) => b.addEventListener('click', () => { input.value = b.textContent; send(); }));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.activeElement?.blur?.(); });
+function wireSuggestions() { document.querySelectorAll('.sug').forEach((b) => { b.onclick = () => { input.value = b.textContent; send(); }; }); }
+wireSuggestions();
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (Palette.isOpen()) return;                 // palette owns Escape while open
+  if (asking) { e.preventDefault(); abort(); return; }   // abort the live turn before any blur
+  document.activeElement?.blur?.();
+});
+
+// the empty-state node, captured before the first message removes it, so New conversation can restore it
+const emptyHTML = $('#thread-empty') ? $('#thread-empty').outerHTML : '';
+function newConversation() {
+  if (asking) abort();
+  thread.innerHTML = emptyHTML;
+  wireSuggestions();
+  liveMsg = null; liveText = ''; liveTools = [];
+  show('converse'); input.focus();
+}
+
+// ---- command palette + menu ------------------------------------------------------
+function focusArchiveSearch() { show('archive'); setTimeout(() => $('#arch-search').focus(), 0); }
+function focusReminder() { show('reminders'); setTimeout(() => $('#rem-text').focus(), 0); }
+function distillNow() { $('#distill').click(); }
+Palette.init([
+  { title: 'Converse', hint: '⌘1', run: () => show('converse') },
+  { title: 'Archive', hint: '⌘2', run: () => show('archive') },
+  { title: 'Reminders', hint: '⌘3', run: () => show('reminders') },
+  { title: 'Jobs', hint: '⌘4', run: () => show('jobs') },
+  { title: 'Hearth', hint: '⌘5', run: () => show('hearth') },
+  { title: 'Settings', hint: '⌘6', run: () => show('settings') },
+  { title: 'New conversation', hint: '⌘N', run: newConversation },
+  { title: 'Search the archive…', run: focusArchiveSearch },
+  { title: 'New reminder…', run: focusReminder },
+  { title: 'Toggle spoken replies', run: toggleVoice },
+  { title: 'Distill memory now', run: distillNow },
+  { title: 'Stop generation', run: abort },
+  { title: 'Quit Urfael', run: () => window.urfael.quit() },
+]);
+
+// menu bar / dock actions forwarded from main.js (preload may not expose onMenu yet — consume defensively)
+if (window.urfael.onMenu) window.urfael.onMenu((a) => {
+  if (typeof a !== 'string') return;
+  if (a.startsWith('view:')) show(a.slice(5));
+  else if (a === 'new') newConversation();
+  else if (a === 'settings') show('settings');
+  else if (a === 'stop') abort();
+  // 'toggle-orb' is owned by the main process / orb; nothing for the Console to do here
+});
 
 // ---- boot -----------------------------------------------------------------------
 (async () => {

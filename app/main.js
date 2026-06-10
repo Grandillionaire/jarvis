@@ -7,7 +7,7 @@
 // the HUD rail deploys to its left inside the SAME window (transparent windows can't be resized on
 // macOS, so the window is always large and the lit content expands/collapses via CSS altitudes).
 // Mouse events pass through everything except elements the renderer marks interactive.
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, session } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, screen, session } = require('electron');
 const { spawn } = require('child_process');
 const { Worker } = require('worker_threads');
 const http = require('http');
@@ -46,9 +46,13 @@ function ensureDaemon() {
   })().finally(() => { ensuring = null; });
   return ensuring;
 }
+let askInFlight = 0; // refcount concurrent LOCAL asks so the dock badge clears only when all finish
+function dockBadge() { if (app.dock && process.platform === 'darwin') app.dock.setBadge(askInFlight > 0 ? '…' : ''); }
 function askDaemon(text) {
+  askInFlight++; dockBadge();
   return new Promise(async (resolve) => {
-    if (!(await ensureDaemon())) { resolve({ ok: false, text: '(brain offline)', model: '' }); return; }
+    const finish = (v) => { askInFlight = Math.max(0, askInFlight - 1); dockBadge(); resolve(v); };
+    if (!(await ensureDaemon())) { finish({ ok: false, text: '(brain offline)', model: '' }); return; }
     let done = false;
     const req = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' } }, (res) => {
       let buf = '';
@@ -61,12 +65,12 @@ function askDaemon(text) {
           let e; try { e = JSON.parse(line); } catch { continue; }
           if (e.kind === 'thinking') { const { kind, ...p } = e; forward('urfael:thinking', p); }
           else if (e.kind === 'say') { const { kind, ...p } = e; forward('urfael:say', p); }
-          else if (e.kind === 'done') { done = true; forward('urfael:done', { model: e.model, ms: e.ms, text: e.text }); resolve({ ok: true, text: e.text, model: e.model }); }
+          else if (e.kind === 'done') { done = true; forward('urfael:done', { model: e.model, ms: e.ms, text: e.text, aborted: e.aborted }); finish({ ok: true, text: e.text, model: e.model }); }
         }
       });
-      res.on('end', () => { if (!done) resolve({ ok: true, text: '', model: '' }); });
+      res.on('end', () => { if (!done) finish({ ok: true, text: '', model: '' }); });
     });
-    req.on('error', () => { if (!done) resolve({ ok: false, text: '(brain unreachable)', model: '' }); });
+    req.on('error', () => { if (!done) finish({ ok: false, text: '(brain unreachable)', model: '' }); });
     req.write(JSON.stringify({ text })); req.end();
   });
 }
@@ -91,6 +95,7 @@ function daemonPostJson(p, body) {
 }
 
 ipcMain.handle('urfael:ask', (_e, text) => askDaemon(text));
+ipcMain.handle('urfael:abort', async () => { const r = await daemonPostJson('/abort'); return { ok: !!(r && r.ok) }; }); // stops only the current in-flight LOCAL turn
 
 // ---- Console window IPC: session archive, reminders, jobs, settings ----
 const MEMORY_DIR = path.join(os.homedir(), process.env.URFAEL_MEMORY_DIR || 'Urfael-memory');
@@ -239,6 +244,50 @@ function toggle() {
   else { win.showInactive(); win.show(); win.webContents.send('urfael:shown'); if (wakeWorker) wakeWorker.postMessage('resume'); }
 }
 
+// ---- native menu bar -------------------------------------------------------
+// App-action items send 'urfael:menu' (an action string) to the focused window; the Console renderer
+// consumes it via window.urfael.onMenu. Edit/Window roles stay native.
+function menuSend(action) { const w = BrowserWindow.getFocusedWindow() || consoleWin; if (w && !w.isDestroyed()) w.webContents.send('urfael:menu', action); }
+function toggleOrb() { if (win && !win.isDestroyed()) toggle(); else { createWindow(); win.once('ready-to-show', () => { win.showInactive(); win.show(); }); } }
+function buildMenu() {
+  const tpl = [
+    { label: 'Urfael', submenu: [
+      { label: 'About Urfael', click: () => menuSend('about') },
+      { type: 'separator' },
+      { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => menuSend('settings') },
+      { type: 'separator' },
+      { role: 'hide' },
+      { type: 'separator' },
+      { label: 'Quit Urfael', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() },
+    ] },
+    { label: 'File', submenu: [
+      { label: 'New Conversation', accelerator: 'CmdOrCtrl+N', click: () => menuSend('new') },
+      { label: 'Open Console', accelerator: 'CmdOrCtrl+Shift+O', click: createConsole },
+      { type: 'separator' },
+      { role: 'close', label: 'Close Window', accelerator: 'CmdOrCtrl+W' },
+    ] },
+    { label: 'Edit', submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+    ] },
+    { label: 'View', submenu: [
+      { label: 'Converse', accelerator: 'CmdOrCtrl+1', click: () => menuSend('view:converse') },
+      { label: 'Archive', accelerator: 'CmdOrCtrl+2', click: () => menuSend('view:archive') },
+      { label: 'Reminders', accelerator: 'CmdOrCtrl+3', click: () => menuSend('view:reminders') },
+      { label: 'Jobs', accelerator: 'CmdOrCtrl+4', click: () => menuSend('view:jobs') },
+      { label: 'Hearth', accelerator: 'CmdOrCtrl+5', click: () => menuSend('view:hearth') },
+      { label: 'Settings', accelerator: 'CmdOrCtrl+6', click: () => menuSend('view:settings') },
+      { type: 'separator' },
+      { label: 'Toggle Orb HUD', click: () => { toggleOrb(); menuSend('toggle-orb'); } },
+      { role: 'reload' },
+      { role: 'toggleDevTools' },
+    ] },
+    { label: 'Window', submenu: [ { role: 'minimize' }, { role: 'zoom' } ] },
+    { label: 'Help', role: 'help', submenu: [ { label: 'About Urfael', click: () => menuSend('about') } ] },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
+}
+
 // ---- config for the renderer -----------------------------------------------
 let ttsEnvCache = { mtime: -1, val: null }; // read per TTS/STT call — only re-parse when the file actually changed
 function readTtsEnv() {
@@ -316,6 +365,7 @@ else app.on('second-instance', () => { if (win) { win.show(); } });
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'));
+  buildMenu();                                                     // native menu bar + accelerators
   const orbOn = readTtsEnv().orb || process.env.URFAEL_ORB === '1';
   createConsole();                                                 // the Console IS the app
   globalShortcut.register('CommandOrControl+Shift+O', createConsole);

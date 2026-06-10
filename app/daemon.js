@@ -149,6 +149,15 @@ class Session {
     this._send(this.current.text);
   }
   ask(text, opts = {}) { return new Promise((res) => { this.queue.push({ text, cb: res, speak: opts.speak, silent: opts.silent, turnId: opts.turnId }); this._next(); }); }
+  // Abort the in-flight turn (if any): mirror the timeout path — clear the watchdog, SIGKILL the proc,
+  // discard it, resolve the waiter with '(stopped)', then drain the queue. No-op when idle.
+  abort() {
+    if (!this.current) return false;
+    const c = this.current; this.current = null; clearTimeout(c.timer);
+    try { this.proc && this.proc.kill('SIGKILL'); } catch {} this.proc = null; // discard the killed process
+    c.cb('(stopped)'); this._next();
+    return true;
+  }
 }
 
 const sessions = new Map();
@@ -178,6 +187,9 @@ const brain = {
     return { text: reply, model, ms };
   },
   endConversation() { convoModel = MODELS.sonnet; softTurns = 0; },
+  // Abort the current LOCAL turn across the warm sessions. Touches only the serialized `sessions` map —
+  // never askScoped (remote one-shots) or background jobs. Returns true if a turn was actually aborted.
+  abort() { let any = false; for (const s of sessions.values()) if (s.abort()) any = true; return any; },
   // Remote/untrusted turns (Telegram/Discord/etc.): a one-shot, STRUCTURALLY SANDBOXED claude — never the
   // warm local session, never bypassPermissions. Scoped to the profile's permission mode + tool allowlist +
   // --strict-mcp-config (no computer-use), with the message wrapped in an untrusted-data envelope. Stateless
@@ -397,11 +409,15 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
       active = res;
       res.on('close', () => { if (active === res) active = null; }); // client gone -> stop writing into a dead socket
-      try { const r = await brain.ask(text); emit({ kind: 'done', text: r.text, model: r.model, ms: r.ms }); }
+      try { const r = await brain.ask(text); emit(r.text === '(stopped)' ? { kind: 'done', text: '(stopped)', aborted: true } : { kind: 'done', text: r.text, model: r.model, ms: r.ms }); }
       catch (e) { emit({ kind: 'done', text: '(brain error)', model: '' }); }
       if (active === res) active = null;
       try { res.end(); } catch {}
     });
+  } else if (req.method === 'POST' && req.url === '/abort') {
+    // abort ONLY the current in-flight LOCAL turn — never askScoped or jobs. Safe to call when idle.
+    const ok = brain.abort(); logEvent({ ev: 'abort', ok });
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok }));
   } else if (req.method === 'POST' && req.url === '/conversation-end') {
     brain.endConversation(); distill(); res.writeHead(200); res.end('{}');
   } else if (req.url === '/health') {
