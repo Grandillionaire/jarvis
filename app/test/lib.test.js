@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, nextOccurrence } = require('../lib');
+const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, normalizeCron, nextOccurrence } = require('../lib');
 
 test('routing: code/dev → Opus', () => {
   for (const q of ['debug this python function', 'refactor the auth module', 'push my code to the repo', 'architect a caching layer'])
@@ -120,4 +120,76 @@ test('reminder: nextOccurrence advances repeats past now, false for one-shots', 
   const ev = { at: NOW - 10 * 3600000, repeat: { everyMins: 60 } };
   assert.ok(nextOccurrence(ev, NOW));
   assert.ok(ev.at > NOW && ev.at <= NOW + 3600000);
+});
+
+// ---- cron (scheduled agent jobs) ----
+test('cron: inMins one-shot, deliver defaults to notify', () => {
+  const c = normalizeCron({ prompt: 'summarize my inbox', inMins: 30 }, NOW);
+  assert.equal(c.at, NOW + 30 * 60000);
+  assert.equal(c.prompt, 'summarize my inbox');
+  assert.equal(c.deliver, 'notify');
+  assert.equal(c.repeat, null);
+});
+
+test('cron: absolute at (ISO) accepted', () => {
+  const c = normalizeCron({ prompt: 'check the deploy', at: '2026-06-10T18:00:00Z' }, NOW);
+  assert.equal(c.at, Date.parse('2026-06-10T18:00:00Z'));
+  assert.equal(c.repeat, null);
+});
+
+test('cron: everyMins repeat carries a usable first fire + clamps to >= 5', () => {
+  const c = normalizeCron({ prompt: 'poll status', inMins: 5, repeat: { everyMins: 15 } }, NOW);
+  assert.deepEqual(c.repeat, { everyMins: 15 });
+  assert.equal(c.at, NOW + 5 * 60000);
+  const floored = normalizeCron({ prompt: 'spam', inMins: 1, repeat: { everyMins: 1 } }, NOW);
+  assert.equal(floored.repeat.everyMins, 5);
+  const capped = normalizeCron({ prompt: 'rare', inMins: 1, repeat: { everyMins: 999999 } }, NOW);
+  assert.equal(capped.repeat.everyMins, 43200); // 30d ceiling
+});
+
+test('cron: daily/weekly repeat past start rolls forward via nextOccurrence', () => {
+  const c = normalizeCron({ prompt: 'daily brief', at: '2026-06-10T08:00:00Z', repeat: 'daily' }, NOW);
+  assert.ok(c && c.repeat === 'daily');
+  assert.ok(nextOccurrence(c, NOW));
+  assert.ok(c.at > NOW && c.at <= NOW + 86400000);
+});
+
+test('cron: dailyAt:"HH:MM" parsing seeds first fire at next occurrence of that local time', () => {
+  const c = normalizeCron({ prompt: 'morning digest', repeat: { dailyAt: '07:30' } }, NOW);
+  assert.ok(c && c.repeat === 'daily');
+  const d = new Date(c.at);
+  assert.equal(d.getHours(), 7);
+  assert.equal(d.getMinutes(), 30);
+  assert.ok(c.at > NOW);                         // always a future first fire
+  assert.ok(c.at <= NOW + 86400000);             // within the next 24h
+});
+
+test('cron: dailyAt out-of-range / malformed is rejected (fail-closed)', () => {
+  for (const bad of [{ prompt: 'p', repeat: { dailyAt: '25:00' } }, { prompt: 'p', repeat: { dailyAt: '7:5' } },
+    { prompt: 'p', repeat: { dailyAt: '12:60' } }, { prompt: 'p', repeat: { dailyAt: 'noon' } }])
+    assert.equal(normalizeCron(bad, NOW), null, JSON.stringify(bad));
+});
+
+test('cron: deliver mode is allowlisted (silent/push kept, anything else -> notify)', () => {
+  assert.equal(normalizeCron({ prompt: 'p', inMins: 5, deliver: 'silent' }, NOW).deliver, 'silent');
+  assert.equal(normalizeCron({ prompt: 'p', inMins: 5, deliver: 'push' }, NOW).deliver, 'push');
+  for (const d of ['notify', 'shout', '', null, 7, {}])
+    assert.equal(normalizeCron({ prompt: 'p', inMins: 5, deliver: d }, NOW).deliver, 'notify', JSON.stringify(d));
+});
+
+test('cron: fail-closed on missing prompt / garbage / bad repeat', () => {
+  for (const bad of [null, 'x', [], { inMins: 5 }, { prompt: '', inMins: 5 }, { prompt: '   ', inMins: 5 },
+    { prompt: 'p' }, { prompt: 'p', inMins: NaN }, { prompt: 'p', at: 'not-a-date' },
+    { prompt: 'p', inMins: 5, repeat: 'hourly' }, { prompt: 'p', inMins: 5, repeat: { everyMins: 'lots' } }])
+    assert.equal(normalizeCron(bad, NOW), null, JSON.stringify(bad));
+});
+
+test('cron: bounds clamped — one-shot past rejected, >1y rejected, prompt truncated', () => {
+  assert.equal(normalizeCron({ prompt: 'late', at: '2026-06-10T10:00:00Z' }, NOW), null); // one-shot in the past
+  assert.equal(normalizeCron({ prompt: 'far', at: '2031-01-01T00:00:00Z' }, NOW), null);  // > 1y out
+  const long = normalizeCron({ prompt: 'x'.repeat(5000), inMins: 5 }, NOW);
+  assert.equal(long.prompt.length, 2000);                                                 // prompt capped at 2000
+  // a repeating job dated in the past is allowed (rolls forward), unlike a one-shot
+  const rep = normalizeCron({ prompt: 'recurring', at: '2026-06-10T10:00:00Z', repeat: 'daily' }, NOW);
+  assert.ok(rep && rep.repeat === 'daily');
 });

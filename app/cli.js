@@ -8,6 +8,10 @@
 //   urfael reminders                           list reminders
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
+//   urfael cron [add "<prompt>" --daily-at HH:MM | --in N | --repeat daily] [list|cancel <id>|run <id>]
+//                                              scheduled AGENT jobs — runs the brain on a schedule, delivers the result
+//   urfael serve [--token]                     start the OpenAI-compatible local API (Open WebUI / any OpenAI client)
+//   urfael import [--from openclaw|hermes] [--apply]   migrate memory + skills from another assistant (dry-run by default)
 //   urfael skills list                         your installed skills (name + description)
 //   urfael skills export <name>                print a skill to stdout to share it
 //   urfael skills scan <file>                  static safety-scan a skill .md before trusting it
@@ -26,7 +30,9 @@ const SOCK = path.join(os.homedir(), '.claude', 'urfael', 'daemon.sock');
 const MEMORY_DIR = path.join(os.homedir(), process.env.URFAEL_MEMORY_DIR || 'Urfael-memory');
 const DAEMON = path.join(__dirname, 'daemon.js');
 const DASHBOARD = path.join(__dirname, 'dashboard.js');
+const APISERVER = path.join(__dirname, 'openai-api.js');
 const TOKENF = path.join(os.homedir(), '.claude', 'urfael', 'dashboard.token');
+const APITOKENF = path.join(os.homedir(), '.claude', 'urfael', 'api.token');
 const gold = (s) => `\x1b[33m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
@@ -131,6 +137,26 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
   // stop is best-effort BEFORE ensureDaemon — never spawn a brain just to abort nothing
   if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }
 
+  // import: pull memory + skills from an OpenClaw/Hermes install. Pure CLI (no brain); dry-run unless --apply.
+  if (cmd === 'import') {
+    const from = flag(rest, '--from'), srcPath = flag(rest, '--path');
+    const r = await require('./import').run({ from, path: srcPath, apply: rest.includes('--apply'), force: rest.includes('--force') });
+    if (r && r.error) process.exit(1);
+    return;
+  }
+
+  // serve: ensure the OpenAI-compatible local API is up (spawn detached if not), print its base URL + token path.
+  // Runs BEFORE ensureDaemon — the API server manages its own lifecycle and proxies the brain on demand.
+  if (cmd === 'serve') {
+    const port = parseInt(process.env.URFAEL_API_PORT, 10) || 7720;
+    const up = () => new Promise((r) => { const s = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/v1/models', timeout: 800 }, (res) => { res.resume(); r(true); }); s.on('error', () => r(false)); s.on('timeout', () => { s.destroy(); r(false); }); s.end(); });
+    if (!(await up())) { try { const p = spawn(process.execPath, [APISERVER], { detached: true, stdio: 'ignore' }); p.unref(); } catch {} for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 300)); if (await up()) break; } }
+    console.log(gold(`http://127.0.0.1:${port}/v1`) + dim('  (OpenAI-compatible · localhost only · bearer-token gated)'));
+    if (rest.includes('--token')) { try { console.log('  API key: ' + gold(fs.readFileSync(APITOKENF, 'utf8').trim())); } catch { console.error('  (no token yet)'); } }
+    else console.log(dim('  API key: the token in ' + APITOKENF + ' (run `urfael serve --token` to print it)'));
+    return;
+  }
+
   // dashboard: ensure the standalone localhost console is up (spawn detached if not), then print its tokened URL.
   // Runs BEFORE ensureDaemon — the dashboard manages its own lifecycle and proxies the brain on demand.
   if (cmd === 'dashboard') {
@@ -155,6 +181,26 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     console.log(`  model     ${v.model}    warm: ${(v.warm || []).join(', ')}`);
     console.log(`  today     ${v.turnsToday} turns · ${v.tokToday >= 1000 ? Math.round(v.tokToday / 1000) + 'k tokens' : (v.tokToday || 0) + ' tokens'} · avg ${v.avgMs}ms`);
     console.log(`  memory    ${v.memCommits} commits    uptime ${Math.round(v.uptimeS / 60)}m    brain restarts today: ${v.errors}`);
+    return;
+  }
+  if (cmd === 'cron') {
+    const sub = rest[0];
+    if (sub === 'add') {
+      const prompt = rest.slice(1).filter((a, i) => !a.startsWith('--') && !(rest[i] || '').startsWith('--')).join(' ');
+      const spec = { prompt };
+      if (flag(rest, '--in') != null) spec.inMins = Number(flag(rest, '--in'));
+      if (flag(rest, '--daily-at')) spec.repeat = { dailyAt: flag(rest, '--daily-at') };
+      else if (flag(rest, '--repeat')) { const r = flag(rest, '--repeat'); spec.repeat = (r === 'daily' || r === 'weekly') ? r : { everyMins: Number(r) }; }
+      if (flag(rest, '--deliver')) spec.deliver = flag(rest, '--deliver');
+      const r = await req('POST', '/cron', spec);
+      console.log(r && r.error ? '✗ ' + r.error : `✓ cron ${r.id} — first run ${r.at}`);
+      return;
+    }
+    if (sub === 'cancel' && rest[1]) { console.log(JSON.stringify(await req('POST', `/cron/${rest[1]}/cancel`))); return; }
+    if (sub === 'run' && rest[1]) { console.log(JSON.stringify(await req('POST', `/cron/${rest[1]}/run`))); return; }
+    const cj = await req('GET', '/cron');
+    if (!cj || !cj.length) { console.log('no scheduled jobs'); return; }
+    for (const j of cj) console.log(`${j.id}  ${gold((j.at || '').replace('T', ' ').slice(0, 16))}  ${(j.prompt || '').slice(0, 60)}${j.repeat ? dim('  (' + JSON.stringify(j.repeat) + ')') : ''}`);
     return;
   }
   if (cmd === 'jobs') { for (const j of await req('GET', '/jobs')) console.log(`${j.id}  ${j.kind}  ${gold(j.state)}  ${dim(j.createdAt || '')}`); return; }

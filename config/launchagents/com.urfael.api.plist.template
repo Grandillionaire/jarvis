@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Urfael OpenAI-compatible API — token-gated LOCALHOST surface (binds 127.0.0.1 ONLY, never the LAN). Lets any
+     OpenAI client (Open WebUI, LibreChat, the openai SDK) talk to the brain. install.sh fills
+     {{HOME}}/{{NODE}}/{{REPO}}. The bearer token is generated on first start and written 0600 to
+     ~/.claude/urfael/api.token; run `urfael serve` to print the base URL + token path. Read SECURITY.md first. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.urfael.api</string>
+  <key>ProgramArguments</key>
+  <array><string>{{NODE}}</string><string>{{REPO}}/app/openai-api.js</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>Umask</key><string>0077</string><!-- StandardOut/Err logs created 0600, never world-readable -->
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- Loopback port for the OpenAI-compatible API (default 7720): -->
+    <!-- <key>URFAEL_API_PORT</key><string>7720</string> -->
+  </dict>
+  <key>StandardOutPath</key><string>{{HOME}}/.claude/urfael/api.out.log</string>
+  <key>StandardErrorPath</key><string>{{HOME}}/.claude/urfael/api.err.log</string>
+</dict></plist>
