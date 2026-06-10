@@ -64,7 +64,7 @@ Every win below is real, and every gap is admitted in the same grid — the hone
 | Battle-tested at scale | ⚠️ small, and we say so | ✅ large | ✅ very large |
 | OS coverage | ⚠️ macOS solid, Linux newer | ✅ broad | ✅ broad |
 
-<sub>¹ The lone exception is the optional WhatsApp bridge, whose webhook binds to `127.0.0.1` behind your own tunnel and is HMAC-verified. ² Competitor cells are best-effort fair: both sandbox optionally and both default to DM pairing.</sub>
+<sub>¹ The *brain* opens no port (unix socket only). The opt-in web dashboard and OpenAI-compatible API bind `127.0.0.1` only — loopback, token-gated, unreachable from the LAN or internet. The lone genuinely-inbound surface is the optional WhatsApp bridge, whose webhook also binds `127.0.0.1` behind your own tunnel and is HMAC-verified. ² Competitor cells are best-effort fair: both sandbox optionally and both default to DM pairing.</sub>
 
 **We win where it counts for a machine that lives on your desk and acts on your behalf: blast radius, cost predictability, and not overstating maturity.**
 
@@ -77,7 +77,7 @@ Benefit first, mechanism second. Everything is opt-in and guard-railed.
 - **Flat rate, full stop.** It runs on your Claude Code subscription. Idle costs nothing beyond it; there is no per-token surprise. Token use and an estimated daily/7-day/30-day spend are visible in the app, the dashboard, and `urfael status`.
 - **Memory that compounds.** Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are — all re-read every session. Ask "what did I say about the Berlin trip?" and it **ranks its own history (BM25)** and cites the date.
 - **Skills that grow — installed paranoid.** It writes down procedures it figures out and reuses them; a curator prunes stale ones. Install one from a URL and it **previews the full content and runs a static safety scan first** (dangerous flags, exfil URLs, prompt-injection, hidden unicode), refuses to auto-install anything flagged, and never executes a skill.
-- **Quietly proactive.** "Remind me in 20 minutes" / "every morning at 8" just works — fired as a notification, spoken aloud, pushed to your phone, every window closed. An opt-in heartbeat runs your `HEARTBEAT.md` checklist and stays silent unless something genuinely needs you.
+- **Quietly proactive.** "Remind me in 20 minutes" / "every morning at 8" just works — and **scheduled agent jobs** (`urfael cron add "summarize my unread mail" --daily-at 08:00`) run the brain on a schedule and deliver the result. Reminders speak a fixed text; cron jobs *do work* and report back — fired as a notification, spoken aloud, pushed to your phone, every window closed. An opt-in heartbeat runs your `HEARTBEAT.md` checklist and stays silent unless something genuinely needs you.
 - **It attacks itself.** The security-critical paths ship with regression tests built from real adversarial findings (allowlist bypasses, SSRF, parser desync, DoS) so they can't quietly rot.
 - **It tells you what it doesn't know.** See [What's lightly tested](#whats-lightly-tested). That section exists on purpose.
 
@@ -164,6 +164,7 @@ One brain, four ways to reach it — all thin clients of the same daemon, so a c
 - **Orb HUD** (`URFAEL_ORB=1`) — an ambient, click-through seeing-stone in the corner of your screen with four looks (`sigil`, `rune`, `ember`, `eye`). Speak the wake word and talk hands-free.
 - **Terminal** — `urfael "summarize my inbox"` streams the answer live; `status`, `jobs`, `reminders`, `remind`, `sessions search`, `skills`, `stop`, `dashboard` manage the rest. `Ctrl+C` stops a turn.
 - **`urfael tui`** — a no-deps full-screen terminal cockpit: streamed transcript with live tool activity, a status bar, `Esc` to stop, and it always leaves your terminal clean.
+- **OpenAI-compatible API** — `urfael serve` exposes a token-gated `http://127.0.0.1:7720/v1` (chat completions + models). Point Open WebUI, LibreChat, or the `openai` SDK at it — Urfael becomes their backend, locked to loopback.
 - **Web dashboard** — `urfael dashboard` opens a token-gated localhost page (bound to `127.0.0.1` only, constant-time token, no path serving). It's an **installable, responsive PWA**, so over a tunnel it's a real phone app — the browser surface the others have, locked down harder.
 
 </details>

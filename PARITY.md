@@ -13,7 +13,7 @@
 | Voice (wake word, PTT, barge-in, local STT/TTS) | wake word, talk mode | CLI PTT, voice memos | ✦ orb (opt-in) + Console PTT + spoken remarks, all local |
 | Web dashboard | ✓ | ✓ | ✦ token-gated localhost dashboard (127.0.0.1-only, constant-time token, no path serving — hardened past both) |
 | Mobile nodes / canvas | iOS/Android, A2UI canvas | ✗ | ✗ — non-goal for now (phone via bridges) |
-| REST API | WS gateway | OpenAI-compatible REST | ◐ unix-socket HTTP (local-only by design); OpenAI-compat shim planned |
+| REST API | WS gateway | OpenAI-compatible REST | ✓ OpenAI-compatible `/v1/chat/completions`+`/v1/models` (127.0.0.1-only, token-gated) — drives Open WebUI/LibreChat/any OpenAI client |
 
 ## Channels
 | | OpenClaw | Hermes | Urfael |
@@ -31,6 +31,12 @@
 | Consolidation | "dreaming" pass | post-turn background review | ✓ end-of-conversation distill (cheaper; per-turn review planned as opt-in) |
 | User modeling | — | Honcho dialectic | ◐ USER.md auto-curated (no per-turn dialectic) |
 
+## Interop & migration
+| | OpenClaw | Hermes | Urfael |
+|---|---|---|---|
+| Migration importer | — | ✓ `claw migrate` (imports OpenClaw) | ✦ `urfael import` imports from **both** OpenClaw and Hermes (memory + skills; foreign skills safety-scanned, DANGER skipped) |
+| OpenAI-client interop | ✗ | ✓ (OpenAI-compatible server) | ✓ token-gated localhost OpenAI API |
+
 ## Skills & self-improvement
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
@@ -42,7 +48,7 @@
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Heartbeat (main-session checklist, silence contract) | ✦ invented it | ✗ | ✓ HEARTBEAT.md + HEARTBEAT_OK + active hours + busy-backoff |
-| Cron / NL scheduling | ✓ | ✓ rich (chaining, no-agent scripts) | ✓ reminders (NL via brain, repeats); ➜ job-chaining, [SILENT] |
+| Cron / NL scheduling | ✓ | ✓ rich (chaining, no-agent scripts) | ✓ reminders + **scheduled agent jobs** (`/cron`: run the brain on a schedule, read/fetch-only sandbox, deliver via notify/say/push, [silent]) |
 | Event triggers (webhooks, email push) | ✓ | ✓ | ✗ — planned (daemon webhook endpoint, gated) |
 
 ## Agents & execution
@@ -82,8 +88,12 @@ token-gated localhost dashboard · skill curator (URFAEL_CURATOR_DAYS) · per-tu
 SHIPPED since (workflow 3, adversarially reviewed): Email bridge (IMAP IDLE, draft-only) ·
 `urfael tui` full-screen cockpit · BM25 ranked recall (daemon /recall) · macOS menu-bar tray.
 
-NEXT (smaller polish, optional):
-1. Usage/cost dashboard panel + per-skill usage counts feeding the curator
-2. Multipart/quoted-printable decode in the email bridge (currently plain-text heuristic)
-3. Linux/Windows ports (tray, voice backends)
-4. Embedding-based recall as an opt-in upgrade over BM25 (only if it earns its keep)
+SHIPPED since: OpenAI-compatible API (`urfael serve`), scheduled agent jobs (`urfael cron`), migration importer (`urfael import`), email MIME decode, Linux port.
+
+REMAINING (deliberate non-goals in *italic*, real-but-optional otherwise):
+1. *200+ model providers* — conflicts with the claude-CLI harness (speed, flat-rate, the clean ToS story); other models work today via a documented proxy on the user's own keys.
+2. *Serverless exec backends (Modal/Daytona)* — paid third-party infra; SSH covers remote.
+3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — low value per unit, each unverified without an account.
+4. Honcho-style per-turn dialectic user modeling (USER.md covers the durable model).
+5. Windows port; richer TUI (modal pickers, live multi-session); embedding recall over BM25.
+6. *Battle-testing at scale* — only real users and time add this.
