@@ -62,6 +62,7 @@ else
   [ -n "$SPEAK" ] && /usr/bin/say ${SAY_VOICE:+-v "$SAY_VOICE"} "$SPEAK" 2>/dev/null
 fi
 # phone push (best-effort; silent no-op if no bridge.env / node)
-NOTIFY="$HOME/urfael/app/bridge/notify.js"
+REPO_DIR="$(cat "$HOME/.claude/urfael/repo" 2>/dev/null || echo "$HOME/urfael-src")"
+NOTIFY="$REPO_DIR/app/bridge/notify.js"
 [ -f "$NOTIFY" ] && command -v node >/dev/null 2>&1 && [ -n "$SPEAK" ] && node "$NOTIFY" "Morning brief: $SPEAK" >/dev/null 2>&1 || true
 printf '%s\n' "$BRIEF" | sed -E 's/\[\/?SPOKEN\]//gi'

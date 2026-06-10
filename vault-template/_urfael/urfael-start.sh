@@ -2,7 +2,8 @@
 # Start Urfael: load the always-on brain daemon (launchd) + open the overlay UI.
 set -uo pipefail
 PLIST="$HOME/Library/LaunchAgents/com.urfael.daemon.plist"
-OVERLAY="$HOME/urfael/app"
+REPO_DIR="$(cat "$HOME/.claude/urfael/repo" 2>/dev/null || echo "$HOME/urfael-src")"
+OVERLAY="$REPO_DIR/app"
 
 echo "Starting Urfael…"
 launchctl load -w "$PLIST" 2>/dev/null && echo "  ✓ brain daemon loaded (launchd)"

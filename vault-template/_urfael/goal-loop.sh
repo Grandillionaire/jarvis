@@ -83,5 +83,6 @@ if [ -n "$DONE" ]; then echo "Result: COMPLETED after $i iters. Review:  git -C 
 else echo "Result: STOPPED (not confirmed complete) after $i iters. Review $LOG and:  git -C \"$REPO\" diff"; OUTCOME="stopped (needs you) ⚠️"; fi
 echo "Nothing was pushed or merged — that's yours to do."
 # phone push (best-effort; silent no-op if no bridge.env / node)
-NOTIFY="$HOME/urfael/app/bridge/notify.js"
+REPO_DIR="$(cat "$HOME/.claude/urfael/repo" 2>/dev/null || echo "$HOME/urfael-src")"
+NOTIFY="$REPO_DIR/app/bridge/notify.js"
 [ -f "$NOTIFY" ] && command -v node >/dev/null 2>&1 && node "$NOTIFY" "Goal $OUTCOME after $i iters: $GOAL" >/dev/null 2>&1 || true

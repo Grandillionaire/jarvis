@@ -4,7 +4,7 @@
 <plist version="1.0"><dict>
   <key>Label</key><string>com.urfael.daemon</string>
   <key>ProgramArguments</key>
-  <array><string>{{NODE}}</string><string>{{HOME}}/urfael/app/daemon.js</string></array>
+  <array><string>{{NODE}}</string><string>{{REPO}}/app/daemon.js</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>EnvironmentVariables</key>

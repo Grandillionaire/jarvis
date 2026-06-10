@@ -2,48 +2,48 @@
 
 <img src="vault-template/_urfael/assets/urfael-logo.svg" width="128" alt="Urfael" />
 
-# Urfael
+# U R F A E L
 
-**A voice at your side, running on the Claude Code subscription you already have.**
+**An old intelligence in service to one person: you.**
 
-You talk. It answers in a real voice while the full detail lands on screen.
+It listens, speaks, remembers, and acts — on the Claude Code subscription you already have.
 
-[![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%26_Intel-111111?style=flat-square)](#requirements)
-[![No API key to start](https://img.shields.io/badge/API_key-not_required-2ea44f?style=flat-square)](#voice)
-[![License](https://img.shields.io/badge/license-MIT-3b82f6?style=flat-square)](LICENSE)
+[![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%26_Intel-1c150b?style=flat-square)](#requirements)
+[![No API key to start](https://img.shields.io/badge/API_key-not_required-7a5c28?style=flat-square)](#voice)
+[![License](https://img.shields.io/badge/license-MIT-9a7434?style=flat-square)](LICENSE)
 
 </div>
 
-Urfael listens, speaks, sees, and acts on your Mac. An always-on local brain runs the `claude` CLI on your existing Claude Code login, an Obsidian vault gives it durable memory, and a floating seeing-stone HUD shows the work. Voice runs entirely on-device. No paid API, no cloud lock-in.
+Urfael is a personal AI that lives on your Mac the way a counselor lives at your elbow. A gold seeing-stone waits in the corner of your screen; speak to it and a real voice answers while the full written answer lands beside it. An always-on local brain runs the `claude` CLI on your existing Claude Code login. An Obsidian vault is its archive; a private git repo is its memory; every conversation makes it a little more yours — it distills what it learned, keeps a model of who you are, and writes down the procedures it figures out so it never has to figure them out twice.
 
-It comments out loud while the full answer lands on screen — a remark, not a wall of read-aloud text. It ships safe: power stays off until you turn it on, after reading [SECURITY.md](SECURITY.md).
+It speaks in remarks, not read-alouds. It stays silent unless something needs you. And it ships safe: power stays off until you turn it on, after reading [SECURITY.md](SECURITY.md).
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/Grandillionaire/urfael.git && cd urfael
+git clone https://github.com/Grandillionaire/urfael.git && cd urfael   # clone anywhere — the installer records the path
 ./install.sh        # checks deps, fetches the local speech model, scaffolds your vault — no keys
-cd app && npm start # the orb appears, bottom-right
+cd app && npm start # the stone appears, bottom-right
 ```
 
-Tap the orb and talk. That is a full voice assistant running on nothing but your Claude Code plan. Nicer voices, a spoken wake word (train a free custom "Urfael" keyword, or use a built-in one), and browser or desktop control are all opt-in, covered in [docs/SETUP.md](docs/SETUP.md).
+Tap the stone and talk. That is a full voice assistant running on nothing but your Claude Code plan. Nicer voices, a spoken wake word (train a free custom "Urfael" keyword, or use a built-in one), and browser or desktop control are all opt-in, covered in [docs/SETUP.md](docs/SETUP.md).
 
-**Hotkeys**   `⌘⇧U` show or hide  ·  `⌘⇧H` expand HUD  ·  `⌘⇧T` change the look  ·  `⌘⇧Q` quit
+**Hotkeys**   `⌘⇧U` show or hide  ·  `⌘⇧H` expand the HUD  ·  `⌘⇧T` change the look  ·  `⌘⇧Q` quit
 
 ## How it works
 
-The Electron overlay is a thin client: the gold-on-glass HUD, an audio-reactive seeing-stone orb, multiple themes. The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, so it rides your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones, code and deep reasoning, escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
+The Electron overlay is a thin client: the gold-on-glass HUD (Counsel · Answer · Hearth), an audio-reactive seeing-stone, four looks (`sigil`, `rune`, `ember`, `eye`). The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, riding your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones — code, deep reasoning — escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
 
 ```mermaid
 flowchart LR
     you([you]) -->|local whisper| daemon
     subgraph mac[your Mac · no cloud]
       daemon["brain daemon<br/>warm claude sessions"]
-      vault[("Obsidian vault<br/>knowledge + memory")]
+      vault[("Obsidian vault<br/>archive + memory")]
       daemon <--> vault
       daemon -->|MCP| hands["browser · desktop · vision"]
     end
-    daemon -->|spoken comment| tts["local TTS"] --> ear([you hear])
+    daemon -->|spoken remark| tts["local TTS"] --> ear([you hear])
     daemon -->|full answer| hud["seeing-stone HUD"]
     plan[/"Claude Code subscription"/] -.-> daemon
 ```
@@ -52,11 +52,11 @@ flowchart LR
 
 Everything below is opt-in and guard-railed. Urfael ships without unrestricted permissions or computer-use, and you turn power on deliberately.
 
-- **Voice.** Tap the orb or speak the wake word, then talk and it answers in a real voice over an audio-reactive orb. The spoken comment streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
-- **Memory.** An Obsidian markdown vault holds its knowledge and long-term memory. Each conversation auto-distills into a private, versioned note it reloads next session.
-- **Skills.** After it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch — it gets faster at the things you actually do.
-- **Total recall.** Every conversation is archived to plain JSONL in your private memory repo. "What did I say about the Berlin trip?" — it greps its own history and cites the date. `urfael sessions search <query>` from any terminal.
-- **Terminal.** The same brain answers in your shell: `urfael "summarize my inbox"` streams the answer live; `urfael status`, `jobs`, `reminders`, `remind`, `sessions search` manage the rest. No second config — it's one daemon.
+- **Voice.** Tap the stone or speak the wake word, then talk — it answers in a real voice over an audio-reactive orb. The spoken remark streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
+- **Memory that compounds.** The vault holds its knowledge; a private git repo holds what it learns. Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are (`USER.md`) — all re-read every session.
+- **Skills.** When it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch. Skills proven wrong get fixed or deleted — it curates itself.
+- **Total recall.** Every conversation, from every surface, is archived as plain JSONL in your memory repo. "What did I say about the Berlin trip?" — it greps its own history and cites the date. `urfael sessions search <query>` from any terminal.
+- **A terminal voice.** The same brain answers in your shell: `urfael "summarize my inbox"` streams the answer live; `status`, `jobs`, `reminders`, `remind`, `sessions search` manage the rest. One daemon, every surface.
 - **Reminders.** "Remind me in 20 minutes" / "every morning at 8" just works — persisted in the daemon, fired as a notification, spoken aloud, and pushed to your phone, with every window closed.
 - **Heartbeat (opt-in).** Every N minutes it runs your `HEARTBEAT.md` checklist — upcoming events, urgent email, slipping deadlines — and stays silent unless something genuinely needs you.
 - **Calendar and email.** Read, create, and update Google and Apple Calendar plus Reminders. Drafts email, never sends.
@@ -77,7 +77,7 @@ The default tier is fully local, offline, and free. Everything above it is optio
 | Quality | `small.en` model | [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), local | free, one extra service |
 | Premium | ElevenLabs Scribe | ElevenLabs | paid, opt-in |
 
-A wake word is optional via Picovoice — any built-in keyword works out of the box, and you can train a custom "Urfael" keyword free at console.picovoice.ai. Otherwise, tap the orb.
+A wake word is optional via Picovoice — any built-in keyword works out of the box, and you can train a custom "Urfael" keyword free at console.picovoice.ai. Otherwise, tap the stone.
 
 ## Requirements
 
@@ -94,6 +94,10 @@ The brain uses Claude Code's model aliases, so it always tracks the latest model
 ## A note on power
 
 When you opt into full capability with `URFAEL_YOLO=1`, Urfael becomes a real agent with shell, file, and network access that also reads untrusted email and web. Run that mode in a VM or a throwaway account, and read [SECURITY.md](SECURITY.md) first.
+
+## The name
+
+Urfael is an original character: an old intelligence sworn to one person, woken into a machine. The name is a Sindarin-styled coinage, used for this independent project — no affiliation with any film, game, or estate is implied.
 
 ## Contributing
 

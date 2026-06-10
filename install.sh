@@ -66,11 +66,10 @@ if [ -d "$MEM/.git" ]; then ok "$MEM already exists"; else
   ok "created private local memory repo at $MEM"
 fi
 
-# 5) canonical location: the launchd plist + scripts expect the repo at ~/urfael. Symlink if cloned elsewhere.
-if [ "$REPO" != "$HOME/urfael" ]; then
-  if [ -e "$HOME/urfael" ] && [ ! -L "$HOME/urfael" ]; then warn "$HOME/urfael exists and isn't a symlink — point the daemon plist at $REPO/app manually";
-  else ln -sfn "$REPO" "$HOME/urfael"; ok "linked ~/urfael → $REPO (daemon/scripts use this path)"; fi
-fi
+# 5) record where the repo lives — plists get the literal path baked in; vault scripts read this file.
+#    (No canonical ~/urfael: on macOS the filesystem is case-INsensitive, so ~/urfael would collide
+#    with the ~/Urfael vault. Clone the repo anywhere; everything resolves through this.)
+printf '%s' "$REPO" > "$JDIR/repo"; ok "repo path recorded ($REPO)"
 
 # 6) app deps + the `urfael` terminal command
 if [ -d "$REPO/app/node_modules" ]; then ok "app deps installed"; else ( cd "$REPO/app" && npm install --silent ) && ok "npm install (app)"; fi
@@ -83,7 +82,7 @@ NODE="$(command -v node || echo /opt/homebrew/bin/node)"
 mkdir -p "$LA"
 for t in "$REPO"/config/launchagents/*.plist.template; do
   out="$LA/$(basename "${t%.template}")"
-  sed -e "s|{{HOME}}|$HOME|g" -e "s|{{NODE}}|$NODE|g" "$t" > "$out"
+  sed -e "s|{{HOME}}|$HOME|g" -e "s|{{NODE}}|$NODE|g" -e "s|{{REPO}}|$REPO|g" "$t" > "$out"
 done
 ok "wrote launchd plists to $LA (not loaded)"
 
