@@ -99,6 +99,29 @@ open it, and comment briefly.
 - interactive → self-contained HTML (Chart.js/Plotly CDN) → open in the browser.
 - fallback → QuickChart API (`curl ... quickchart.io/chart`).
 
+## Reminders & scheduling (you can schedule things yourself)
+When {{USER_NAME}} asks to be reminded of something ("remind me in 20 minutes", "every morning at 8",
+"ping me Friday"), schedule it through the daemon — it fires as a notification + spoken aloud + phone push,
+even with every window closed. Convert the natural language to the right fields yourself:
+```bash
+curl -s --unix-socket ~/.claude/jarvis/daemon.sock -X POST http://x/remind \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Call Stefan about the contract","inMins":20}'
+```
+- One-shot at a time: `{"text":"...","at":"2026-06-11T15:00:00"}` (local time ISO).
+- Recurring: add `"repeat":"daily"` / `"repeat":"weekly"` / `"repeat":{"everyMins":120}`.
+- List: `curl -s --unix-socket ~/.claude/jarvis/daemon.sock http://x/reminders`
+- Cancel: `curl -s --unix-socket ~/.claude/jarvis/daemon.sock -X POST http://x/reminder/<id>/cancel`
+Confirm in one spoken line what you scheduled and when it fires. Phrase the reminder `text` as you would
+say it aloud — it is spoken verbatim.
+
+## Skills — don't re-derive what you've already figured out
+`_jarvis/skills/` holds procedures you've learned (one markdown file each: purpose, steps, gotchas).
+- **Before** any multi-step task, `Glob`/`Grep` `_jarvis/skills/` for a relevant skill and follow it.
+- **After** completing a task whose procedure would be reusable (a workflow, an API wrangled, a fix
+  with a non-obvious path), write or update the skill file — terse, imperative, under ~40 lines.
+- Prune skills that turned out wrong; a stale skill is worse than none.
+
 ## Available commands (in `.claude/commands/`)
 `/capture` `/daily` `/journal` `/weekly-review` `/ask` `/research` `/visual` `/autobuild`. See `docs/SETUP.md`.
 

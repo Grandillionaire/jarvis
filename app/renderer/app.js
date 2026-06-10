@@ -52,6 +52,48 @@ function ensureAudio() {
   micAnalyser = ctx.createAnalyser(); micAnalyser.fftSize = 512; micAnalyser.smoothingTimeConstant = 0.5;
   td = new Uint8Array(micAnalyser.fftSize);
   orb.attach(analyser);
+  warmAcks();
+}
+
+// ---- instant acknowledgments — Jarvis answers the moment you stop talking ----
+// Short phrases pre-synthesized once (cached AudioBuffers), played only if the real reply hasn't
+// started speaking within ACK_AFTER_MS — so fast turns aren't slowed down, slow ones aren't silent.
+const ACK_PHRASES = ['On it, sir.', 'Right away, sir.', 'Working on it.', 'One moment.', 'Let me look into that.'];
+const ACK_AFTER_MS = 1200;
+let ackBuffers = [], acksWarmed = false, lastAck = -1;
+async function warmAcks() {
+  if (acksWarmed || cfg.acks === false || (cfg.ttsProvider === 'elevenlabs' && !cfg.apiKey)) return;
+  acksWarmed = true;
+  for (const p of ACK_PHRASES) { try { const a = await synthOne(p); if (a) ackBuffers.push(a); } catch {} }
+}
+async function synthOne(text) { // one-shot synth → decoded AudioBuffer (no turn continuity)
+  let bytes;
+  if (cfg.ttsProvider === 'elevenlabs') {
+    const r = await fetch(`${EL.base}/text-to-speech/${cfg.voiceId}`, {
+      method: 'POST', headers: { 'xi-api-key': cfg.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, model_id: cfg.model, voice_settings: { stability: 0.85, similarity_boost: 0.9, style: 0.0, use_speaker_boost: true, speed: cfg.speed || 1.0 } }),
+    });
+    if (!r.ok) return null;
+    bytes = await r.arrayBuffer();
+  } else {
+    const u8 = await window.jarvis.tts(text);
+    bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+  }
+  return ctx.decodeAudioData(bytes);
+}
+function scheduleAck() {
+  setTimeout(() => { if (state === 'thinking' && !playing && !audioQ.length) playAck(); }, ACK_AFTER_MS);
+}
+function playAck() {
+  if (playing || audioQ.length || !ackBuffers.length) return;
+  let i = Math.floor(Math.random() * ackBuffers.length);
+  if (ackBuffers.length > 1 && i === lastAck) i = (i + 1) % ackBuffers.length; // don't repeat back-to-back
+  lastAck = i;
+  playing = true; setState('speaking');
+  curSource = ctx.createBufferSource();
+  curSource.buffer = ackBuffers[i]; curSource.connect(analyser); curSource.connect(ctx.destination);
+  curSource.onended = () => { curSource = null; playing = false; if (!audioQ.length && !streamEnded) setState('thinking', 'Thinking…'); playNext(); };
+  curSource.start();
 }
 function rms() {
   micAnalyser.getByteTimeDomainData(td);
@@ -100,13 +142,18 @@ window.jarvis.onThinking((p) => {
     if (++toolCount >= 2) escalate('expanded');
   } else if (p.delta) {
     respText += p.delta;
-    const shown = answerForScreen(respText).slice(-1400);
-    responseEl.innerHTML = '';
-    responseEl.appendChild(document.createTextNode(shown));
-    const c = document.createElement('span'); c.className = 'cursor'; c.textContent = '▋'; responseEl.appendChild(c);
-    responseEl.scrollTop = responseEl.scrollHeight;
+    if (!renderQueued) { renderQueued = true; requestAnimationFrame(renderResponse); } // batch: one DOM update per frame, not per token
   }
 });
+let renderQueued = false;
+function renderResponse() {
+  renderQueued = false;
+  const shown = answerForScreen(respText).slice(-1400);
+  responseEl.innerHTML = '';
+  responseEl.appendChild(document.createTextNode(shown));
+  const c = document.createElement('span'); c.className = 'cursor'; c.textContent = '▋'; responseEl.appendChild(c);
+  responseEl.scrollTop = responseEl.scrollHeight;
+}
 // show only the WRITTEN answer on screen — strip the [SPOKEN] comment (that part is voiced, not read)
 function answerForScreen(t) {
   const i = t.search(/\[\/SPOKEN\]/i);
@@ -127,7 +174,7 @@ window.jarvis.onDone((p) => {
 function renderChips(text) {
   chipsEl.innerHTML = '';
   const seen = new Set();
-  const add = (label, q) => { if (seen.has(label)) return; seen.add(label); const c = document.createElement('span'); c.className = 'chip hot'; c.textContent = label; c.onclick = () => window.jarvis.ask(q); chipsEl.appendChild(c); };
+  const add = (label, q) => { if (seen.has(label)) return; seen.add(label); const c = document.createElement('span'); c.className = 'chip hot'; c.textContent = label; c.onclick = () => { ensureAudio(); setState('thinking'); submitAsk(q); }; chipsEl.appendChild(c); };
   (text.match(/[\w.-]+\/[\w.-]+(?=\s|$|[),.])/g) || []).filter((s) => s.includes('/') && !s.includes('//')).slice(0, 3).forEach((r) => add('⌥ ' + r, 'Tell me about the GitHub repo ' + r));
   (text.match(/\b[\w-]+\.md\b/g) || []).slice(0, 2).forEach((f) => add('▤ ' + f, 'Open ' + f + ' and summarize it'));
 }
@@ -178,7 +225,7 @@ drawParticles();
 
 // click-through except over lit/interactive elements (window is ignoreMouseEvents:true by default)
 let interactiveNow = false;
-const HOT = '#orb, #close, .chip, #rail, #dock';
+const HOT = '#orb, #close, .chip, #rail, #dock, #cmdline';
 window.addEventListener('mousemove', (e) => {
   const over = !!(e.target.closest && e.target.closest(HOT));
   if (over !== interactiveNow) { interactiveNow = over; window.jarvis.setInteractive(over); }
@@ -187,7 +234,7 @@ window.addEventListener('mousemove', (e) => {
 // dock launcher chips — set these to your own projects/areas (tap a chip → "Brief me on <name>")
 const PROJECTS = ['work', 'personal', 'research', 'health', 'finances', 'ideas'];
 const dock = document.getElementById('dock');
-PROJECTS.forEach((p) => { const c = document.createElement('span'); c.className = 'chip hot'; c.textContent = p; c.onclick = () => { ensureAudio(); window.jarvis.ask('Brief me on ' + p); }; dock.appendChild(c); });
+PROJECTS.forEach((p) => { const c = document.createElement('span'); c.className = 'chip hot'; c.textContent = p; c.onclick = () => { ensureAudio(); setState('thinking'); submitAsk('Brief me on ' + p); }; dock.appendChild(c); });
 
 window.jarvis.onHudToggle(() => setAltitude(altitude === 'expanded' ? 'idle' : 'expanded'));
 
@@ -196,33 +243,48 @@ window.jarvis.onSay((p) => {
   if (p.text) enqueueSay(p.text, p.turnId);
   else if (p.end && p.turnId === liveTurn && p.turnId !== mutedTurn) { streamEnded = true; maybeFinish(); }
 });
-let sayTurn = -1, prevSpoken = '';
+// Sentence chunks now stream in from the daemon and are synthesized CONCURRENTLY, so audio can
+// finish out of order. A per-turn sequence pipeline re-orders before playback: each chunk takes a
+// seq, lands in readyAudio when synthesized (null on failure, so a failed chunk never stalls the
+// rest), and drainReady releases them to audioQ strictly in seq order.
+let sayTurn = -1, prevSpoken = '', saySeq = 0, nextPlaySeq = 1;
+const readyAudio = new Map();
+function resetSayPipeline(turnId) { sayTurn = turnId; prevSpoken = ''; saySeq = 0; nextPlaySeq = 1; readyAudio.clear(); }
+function drainReady(turnId) {
+  while (readyAudio.has(nextPlaySeq)) {
+    const audio = readyAudio.get(nextPlaySeq); readyAudio.delete(nextPlaySeq); nextPlaySeq++;
+    if (audio && turnId === liveTurn && turnId !== mutedTurn) audioQ.push({ turnId, audio });
+  }
+  if (!playing) playNext();
+}
 async function enqueueSay(text, turnId) {
   if (turnId !== liveTurn || turnId === mutedTurn) return;
   const spoken = cleanForSpeech(text);
   if ((cfg.ttsProvider === 'elevenlabs' && !cfg.apiKey) || !spoken) return;   // only EL needs a key; local needs nothing
+  if (turnId !== sayTurn) resetSayPipeline(turnId);
+  const seq = ++saySeq;
   pendingFetches++;
+  let audio = null;
   try {
     let audioBytes; // raw audio (ArrayBuffer) for decodeAudioData — same playback path = orb stays reactive
     if (cfg.ttsProvider === 'elevenlabs') {
-      if (turnId !== sayTurn) { sayTurn = turnId; prevSpoken = ''; }
       const myPrev = prevSpoken.slice(-600); prevSpoken += (prevSpoken ? ' ' : '') + spoken;
       const r = await fetch(`${EL.base}/text-to-speech/${cfg.voiceId}?optimize_streaming_latency=3`, {
         method: 'POST', headers: { 'xi-api-key': cfg.apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: spoken, model_id: cfg.model, previous_text: myPrev || undefined, voice_settings: { stability: 0.85, similarity_boost: 0.9, style: 0.0, use_speaker_boost: true, speed: cfg.speed || 1.0 } }),
       });
-      if (!r.ok) { caption.textContent = `Voice error (${r.status})`; pendingFetches--; if (!playing) playNext(); return; }
-      audioBytes = await r.arrayBuffer();
+      if (!r.ok) { caption.textContent = `Voice error (${r.status})`; }
+      else audioBytes = await r.arrayBuffer();
     } else {
       // LOCAL (say / kokoro): main process synthesizes and returns mp3 bytes
       const u8 = await window.jarvis.tts(spoken);                  // Uint8Array over IPC
       audioBytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
     }
-    const audio = await ctx.decodeAudioData(audioBytes);
-    if (turnId === liveTurn && turnId !== mutedTurn) audioQ.push({ turnId, audio });
+    if (audioBytes) audio = await ctx.decodeAudioData(audioBytes);
   } catch (e) { caption.textContent = (e && e.message ? e.message : 'Voice unavailable'); }
+  readyAudio.set(seq, audio);
   pendingFetches--;
-  if (!playing) playNext();
+  drainReady(turnId);
 }
 function playNext() {
   if (!audioQ.length) { playing = false; maybeFinish(); return; }
@@ -274,11 +336,27 @@ async function handleUtterance() {
   const said = await transcribe(new Blob(chunks, { type: 'audio/webm' }));
   const clean = (said || '').replace(/[\(\[][^)\]]*[\)\]]/g, '').trim();
   if (!clean || clean.length < 2) return convo ? beginListening() : resetIdle('');
+  scheduleAck();
+  submitAsk(clean);
+}
+// one ask path for voice, typed input, and dock chips — same finish/safety semantics everywhere
+function submitAsk(text) {
   finished = false; streamEnded = false; audioQ = []; pendingFetches = 0;
-  window.jarvis.ask(clean)
+  window.jarvis.ask(text)
     .then(() => { setTimeout(() => { if (!finished && !playing && !audioQ.length && pendingFetches === 0) finishSpeaking(); }, 60); })
     .catch(() => finishSpeaking());
 }
+// typed input: Enter sends; the reply renders and speaks exactly like a voice turn
+const cmdline = document.getElementById('cmdline');
+cmdline.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const text = cmdline.value.trim();
+  if (!text) return;
+  cmdline.value = '';
+  ensureAudio(); escalate('active');
+  if (state !== 'capturing') setState('thinking');
+  submitAsk(text);
+});
 window.jarvis.onWake((p) => {
   if (p.detected) enterConversation();
   else if (p.ready) setState('idle', 'Say “Jarvis”…');

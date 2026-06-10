@@ -116,12 +116,16 @@ ipcMain.on('jarvis:hud', () => forward('jarvis:hud-toggle')); // ⌘⇧H: render
 
 // ---- cursor gaze (face/mk2 look at the cursor) -----------------------------
 function startGaze() {
+  let lastX = 9, lastY = 9;
   setInterval(() => {
     if (!win || win.isDestroyed() || !win.isVisible()) return;
     try {
       const c = screen.getCursorScreenPoint(); const b = win.getBounds();
       const ox = b.x + b.width - 210, oy = b.y + b.height - 240; // approx orb center (bottom-right)
-      forward('jarvis:gaze', { x: Math.max(-1, Math.min(1, (c.x - ox) / 600)), y: Math.max(-1, Math.min(1, (c.y - oy) / 600)) });
+      const x = Math.max(-1, Math.min(1, (c.x - ox) / 600)), y = Math.max(-1, Math.min(1, (c.y - oy) / 600));
+      if (Math.abs(x - lastX) < 0.005 && Math.abs(y - lastY) < 0.005) return; // cursor still — no IPC churn
+      lastX = x; lastY = y;
+      forward('jarvis:gaze', { x, y });
     } catch {}
   }, 60);
 }
@@ -167,7 +171,11 @@ function toggle() {
 }
 
 // ---- config for the renderer -----------------------------------------------
+let ttsEnvCache = { mtime: -1, val: null }; // read per TTS/STT call — only re-parse when the file actually changed
 function readTtsEnv() {
+  let mtime = 0;
+  try { mtime = fs.statSync(TTS_ENV).mtimeMs; } catch {}
+  if (ttsEnvCache.val && ttsEnvCache.mtime === mtime) return ttsEnvCache.val;
   const cfg = {};
   try {
     for (const line of fs.readFileSync(TTS_ENV, 'utf8').split('\n')) {
@@ -177,7 +185,7 @@ function readTtsEnv() {
       cfg[t.slice(0, i).trim()] = t.slice(i + 1).trim();
     }
   } catch {}
-  return {
+  const out = {
     ttsProvider: (cfg.TTS_PROVIDER || 'say').toLowerCase(),       // say (default, local) | kokoro | elevenlabs
     sttProvider: (cfg.STT_PROVIDER || 'whispercpp').toLowerCase(), // whispercpp (default, local) | elevenlabs
     sayVoice: cfg.SAY_VOICE || '',
@@ -193,7 +201,10 @@ function readTtsEnv() {
     speed: parseFloat(cfg.ELEVENLABS_SPEED || '1.0'),
     picovoiceKey: cfg.PICOVOICE_ACCESS_KEY || '',
     theme: cfg.JARVIS_THEME || 'mk2',
+    acks: cfg.JARVIS_ACKS !== '0',   // instant spoken acknowledgments while thinking (default on)
   };
+  ttsEnvCache = { mtime, val: out };
+  return out;
 }
 ipcMain.handle('jarvis:config', () => readTtsEnv());
 
@@ -202,20 +213,28 @@ const voice = require('./voice');
 ipcMain.handle('jarvis:tts', async (_e, text) => { const b = await voice.synth(text, readTtsEnv()); return b; });        // returns mp3 bytes
 ipcMain.handle('jarvis:stt', async (_e, buf) => voice.transcribe(Buffer.from(buf), readTtsEnv()));                       // returns transcript text
 
-let whisperProc = null;
+let whisperProc = null, whisperStopped = false, whisperRestarts = 0;
 function whisperBin() { for (const p of ['/opt/homebrew/bin/whisper-server', '/usr/local/bin/whisper-server']) { try { fs.accessSync(p); return p; } catch {} } return 'whisper-server'; }
 function startWhisper() {
   const cfg = readTtsEnv();
   if (cfg.sttProvider !== 'whispercpp') return;                                  // only the local-STT path needs the server
   const model = path.join(os.homedir(), '.claude', 'jarvis', 'models', `ggml-${cfg.whisperModel}.bin`);
   if (!fs.existsSync(model)) { forward('jarvis:wake', { error: 'Local STT model missing — run install.sh (downloads whisper)' }); return; }
+  whisperStopped = false;
   try {
+    const spawnedAt = Date.now();
     whisperProc = spawn(whisperBin(), ['--model', model, '--host', '127.0.0.1', '--port', String(cfg.sttPort), '--language', 'en', '--no-timestamps'],
       { stdio: 'ignore' });
-    whisperProc.on('exit', () => { whisperProc = null; });                       // supervised: respawn on demand next launch
+    whisperProc.on('exit', () => {                                               // supervised: auto-respawn with backoff so a crash never leaves Jarvis deaf
+      whisperProc = null;
+      if (whisperStopped) return;
+      if (Date.now() - spawnedAt > 60000) whisperRestarts = 0;                   // it ran fine for a while — reset the backoff
+      const delay = Math.min(30000, 1000 * 2 ** whisperRestarts++);
+      setTimeout(() => { if (!whisperProc && !whisperStopped) startWhisper(); }, delay);
+    });
   } catch { /* binary missing → voice.transcribe throws a clear install message */ }
 }
-function stopWhisper() { try { whisperProc && whisperProc.kill(); } catch {} whisperProc = null; }
+function stopWhisper() { whisperStopped = true; try { whisperProc && whisperProc.kill(); } catch {} whisperProc = null; }
 
 // ---- lifecycle -------------------------------------------------------------
 if (!app.requestSingleInstanceLock()) app.quit();

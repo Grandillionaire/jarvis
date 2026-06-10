@@ -52,8 +52,11 @@ flowchart LR
 
 Everything below is opt-in and guard-railed. Jarvis ships without unrestricted permissions or computer-use, and you turn power on deliberately.
 
-- **Voice.** Tap the orb or use a "Jarvis" wake word, then speak and it answers in a real voice over an audio-reactive orb.
+- **Voice.** Tap the orb or use a "Jarvis" wake word, then speak and it answers in a real voice over an audio-reactive orb. The spoken comment streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
 - **Memory.** An Obsidian markdown vault holds its knowledge and long-term memory. Each conversation auto-distills into a private, versioned note it reloads next session.
+- **Skills.** After it figures out a multi-step procedure, it writes the recipe to `_jarvis/skills/` and follows it next time instead of reasoning from scratch — it gets faster at the things you actually do.
+- **Reminders.** "Remind me in 20 minutes" / "every morning at 8" just works — persisted in the daemon, fired as a notification, spoken aloud, and pushed to your phone, with every window closed.
+- **Heartbeat (opt-in).** Every N minutes it runs your `HEARTBEAT.md` checklist — upcoming events, urgent email, slipping deadlines — and stays silent unless something genuinely needs you.
 - **Calendar and email.** Read, create, and update Google and Apple Calendar plus Reminders. Drafts email, never sends.
 - **Hands and eyes.** Drives the browser with Playwright, controls macOS apps, windows, and files, and sees the screen.
 - **Visuals.** Ask for a chart or diagram and it makes one, in matplotlib, Mermaid, or interactive HTML.

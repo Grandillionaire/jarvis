@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { classifyModel, segmentSentences, MODELS, resolveProfile } = require('../lib');
+const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, nextOccurrence } = require('../lib');
 
 test('routing: code/dev → Opus', () => {
   for (const q of ['debug this python function', 'refactor the auth module', 'push my code to the repo', 'architect a caching layer'])
@@ -74,4 +74,50 @@ test('segment: force flushes the trailing remainder', () => {
 test('segment: multiple sentences in one buffer', () => {
   const { sentences } = segmentSentences('One. Two! Three? ', false);
   assert.deepEqual(sentences, ['One.', 'Two!', 'Three?']);
+});
+
+// ---- reminders ----
+const NOW = Date.parse('2026-06-10T12:00:00Z');
+
+test('reminder: inMins schedules relative to now', () => {
+  const r = normalizeReminder({ text: 'call Stefan', inMins: 20 }, NOW);
+  assert.equal(r.at, NOW + 20 * 60000);
+  assert.equal(r.text, 'call Stefan');
+  assert.equal(r.repeat, null);
+});
+
+test('reminder: absolute at (ISO) accepted', () => {
+  const r = normalizeReminder({ text: 'standup', at: '2026-06-10T15:00:00Z' }, NOW);
+  assert.equal(r.at, Date.parse('2026-06-10T15:00:00Z'));
+});
+
+test('reminder: fail-closed on garbage', () => {
+  for (const bad of [null, 'x', [], { text: 'no time' }, { inMins: 5 }, { text: '', inMins: 5 },
+    { text: 'bad date', at: 'not-a-date' }, { text: 'neg', inMins: NaN }])
+    assert.equal(normalizeReminder(bad, NOW), null, JSON.stringify(bad));
+});
+
+test('reminder: one-shot in the past rejected; repeating in the past allowed (rolls forward)', () => {
+  assert.equal(normalizeReminder({ text: 'late', at: '2026-06-10T10:00:00Z' }, NOW), null);
+  const r = normalizeReminder({ text: 'daily', at: '2026-06-10T08:00:00Z', repeat: 'daily' }, NOW);
+  assert.ok(r && r.repeat === 'daily');
+  assert.ok(nextOccurrence(r, NOW));
+  assert.ok(r.at > NOW && r.at <= NOW + 86400000);
+});
+
+test('reminder: bounds clamped — max 1y out, everyMins floored to 5', () => {
+  assert.equal(normalizeReminder({ text: 'far', at: '2031-01-01T00:00:00Z' }, NOW), null);
+  const r = normalizeReminder({ text: 'spam', inMins: 1, repeat: { everyMins: 1 } }, NOW);
+  assert.equal(r.repeat.everyMins, 5);
+});
+
+test('reminder: nextOccurrence advances repeats past now, false for one-shots', () => {
+  const one = { at: NOW - 1000, repeat: null };
+  assert.equal(nextOccurrence(one, NOW), false);
+  const wk = { at: NOW - 1000, repeat: 'weekly' };
+  assert.ok(nextOccurrence(wk, NOW));
+  assert.ok(wk.at > NOW && wk.at <= NOW + 604800000);
+  const ev = { at: NOW - 10 * 3600000, repeat: { everyMins: 60 } };
+  assert.ok(nextOccurrence(ev, NOW));
+  assert.ok(ev.at > NOW && ev.at <= NOW + 3600000);
 });

@@ -32,6 +32,8 @@ git repo, runs `npm install`, and writes the launchd plists (without loading the
     on `:8880` and set `TTS_PROVIDER=kokoro`.
   - *Premium (optional, paid):* set `TTS_PROVIDER=elevenlabs` + `STT_PROVIDER=elevenlabs` and add your
     `ELEVENLABS_API_KEY` (use a **premade** voice — premade voices don't drift).
+  - *Acknowledgments:* while it works on a slow answer, Jarvis says a short "On it, sir." instead of
+    leaving silence. Disable with `JARVIS_ACKS=0` in `tts.env`.
 - **Persona:** fill `{{USER_NAME}}` / `{{CITY}}` / `{{TIMEZONE}}` / `{{LANGUAGE}}` in `~/Jarvis/CLAUDE.md`.
 - **Obsidian:** open `~/Jarvis` as a vault → Settings → Community plugins → enable → install *Local REST API*
   → copy its API key → register it:
@@ -84,7 +86,24 @@ no writes, no shell, no web) — see SECURITY.md. Web lookup / phone capture are
 Once a bridge is configured, autonomous jobs and the morning brief also **push to your phone** when they
 finish (one-way, owner-only — there's no way to make it message anyone else).
 
-## 7. Background jobs (so long work doesn't tie up the conversation)
+## 7. Reminders & heartbeat (the proactive layer)
+
+**Reminders need zero setup.** Say "remind me in 20 minutes to call Stefan" (or type it) — Jarvis schedules
+it in the daemon and it fires as a macOS notification + spoken aloud + a phone push (if a bridge is
+configured), even with every window closed. Reminders persist across daemon restarts. Inspect them:
+```bash
+curl -s --unix-socket ~/.claude/jarvis/daemon.sock http://x/reminders
+curl -s -X POST --unix-socket ~/.claude/jarvis/daemon.sock http://x/reminder/<id>/cancel
+```
+
+**Heartbeat (opt-in).** Set `JARVIS_HEARTBEAT_MINS` (e.g. `30`) in the daemon plist's
+`EnvironmentVariables` and Jarvis periodically runs the checklist in `~/Jarvis/HEARTBEAT.md` — upcoming
+events, urgent email, piling-up inbox, slipping deadlines — and **stays silent unless something needs
+you** (the `HEARTBEAT_OK` contract). It skips beats while you're actively talking to it and respects
+`JARVIS_HEARTBEAT_HOURS` (default `8-23`) so it never pipes up at 3am. Edit `HEARTBEAT.md` to control
+exactly what it watches; keep it short — every line costs tokens on every beat.
+
+## 8. Background jobs (so long work doesn't tie up the conversation)
 Ask Jarvis (by voice or chat) to run something in the background and it dispatches a detached, cancellable
 job via the `/job` command. Coding jobs run through the guard-railed `/goal` loop (isolated `--repo`, never
 pushes); research jobs run sandboxed and drop a note in your vault. Manage them over the socket:
