@@ -13,6 +13,18 @@ contextBridge.exposeInMainWorld('urfael', {
   setTheme: (t) => ipcRenderer.send('urfael:set-theme', t),
   setInteractive: (on) => ipcRenderer.send('urfael:interactive', on), // mouse passthrough toggle
   conversationEnd: () => ipcRenderer.send('urfael:conversation-end'),
+  // Console (desktop app) surface
+  openConsole: () => ipcRenderer.send('urfael:open-console'),
+  sessionsDays: () => ipcRenderer.invoke('urfael:sessions-days'),
+  sessionRead: (day) => ipcRenderer.invoke('urfael:session-read', day),
+  sessionsSearch: (q) => ipcRenderer.invoke('urfael:sessions-search', q),
+  reminders: () => ipcRenderer.invoke('urfael:reminders'),
+  remind: (spec) => ipcRenderer.invoke('urfael:remind', spec),
+  reminderCancel: (id) => ipcRenderer.invoke('urfael:reminder-cancel', id),
+  jobs: () => ipcRenderer.invoke('urfael:jobs'),
+  job: (id) => ipcRenderer.invoke('urfael:job', id),
+  jobCancel: (id) => ipcRenderer.invoke('urfael:job-cancel', id),
+  setConfig: (k, v) => ipcRenderer.send('urfael:set-config', k, v),
   wakePause: () => ipcRenderer.send('urfael:wake-pause'),
   wakeDone: () => ipcRenderer.send('urfael:wake-done'),
   onShown: (cb) => ipcRenderer.on('urfael:shown', () => cb()),

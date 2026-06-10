@@ -25,16 +25,16 @@ It speaks in remarks, not read-alouds. It stays silent unless something needs yo
 ```bash
 git clone https://github.com/Grandillionaire/urfael.git && cd urfael   # clone anywhere — the installer records the path
 ./install.sh        # checks deps, fetches the local speech model, scaffolds your vault — no keys
-cd app && npm start # the stone appears, bottom-right
+cd app && npm start # the Console opens
 ```
 
-Tap the stone and talk. That is a full voice assistant running on nothing but your Claude Code plan. Nicer voices, a spoken wake word (train a free custom "Urfael" keyword, or use a built-in one), and browser or desktop control are all opt-in, covered in [docs/SETUP.md](docs/SETUP.md).
+The **Console** is the app: chat with live tool activity, push-to-talk, the full conversation archive, reminders, background jobs, and settings — one window, keyboard-first (⌘1–6 views, ⌘K search). Prefer an ambient presence instead? Set `URFAEL_ORB=1` for the floating seeing-stone overlay and talk hands-free. That is a full voice assistant running on nothing but your Claude Code plan. Nicer voices, a spoken wake word (train a free custom "Urfael" keyword, or use a built-in one), and browser or desktop control are all opt-in, covered in [docs/SETUP.md](docs/SETUP.md).
 
-**Hotkeys**   `⌘⇧U` show or hide  ·  `⌘⇧H` expand the HUD  ·  `⌘⇧T` change the look  ·  `⌘⇧Q` quit
+**Hotkeys**   `⌘⇧O` open the Console  ·  `⌘⇧Q` quit  ·  orb mode adds `⌘⇧U` show/hide · `⌘⇧H` HUD · `⌘⇧T` look
 
 ## How it works
 
-The Electron overlay is a thin client: the gold-on-glass HUD (Counsel · Answer · Hearth), an audio-reactive seeing-stone, four looks (`sigil`, `rune`, `ember`, `eye`). The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, riding your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones — code, deep reasoning — escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
+The desktop app is a thin client: the Console window (and, opt-in, a floating seeing-stone HUD with four looks: `sigil`, `rune`, `ember`, `eye`). The brain is an always-on `launchd` daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, riding your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones — code, deep reasoning — escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
 
 ```mermaid
 flowchart LR
@@ -54,7 +54,7 @@ flowchart LR
 
 Everything below is opt-in and guard-railed. Urfael ships without unrestricted permissions or computer-use, and you turn power on deliberately.
 
-- **Voice.** Tap the stone or speak the wake word, then talk — it answers in a real voice over an audio-reactive orb. The spoken remark streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
+- **Voice.** Push-to-talk in the Console, or (orb mode) speak the wake word and talk hands-free. The spoken remark streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
 - **Memory that compounds.** The vault holds its knowledge; a private git repo holds what it learns. Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are (`USER.md`) — all re-read every session.
 - **Skills.** When it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch. Skills proven wrong get fixed or deleted — it curates itself.
 - **Total recall.** Every conversation, from every surface, is archived as plain JSONL in your memory repo. "What did I say about the Berlin trip?" — it greps its own history and cites the date. `urfael sessions search <query>` from any terminal.

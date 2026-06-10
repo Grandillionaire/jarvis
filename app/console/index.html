@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <title>Urfael</title>
+  <link rel="stylesheet" href="console.css" />
+</head>
+<body>
+  <div id="drag"></div>
+
+  <nav id="side" aria-label="Sections">
+    <img id="mark" src="../renderer/urfael-logo.svg" alt="" width="34" height="34" />
+    <button class="nav" data-view="converse" aria-label="Converse (⌘1)"><span class="rune">ᚢ</span>Converse</button>
+    <button class="nav" data-view="archive" aria-label="Archive (⌘2)"><span class="rune">ᚨ</span>Archive</button>
+    <button class="nav" data-view="reminders" aria-label="Reminders (⌘3)"><span class="rune">ᚱ</span>Reminders</button>
+    <button class="nav" data-view="jobs" aria-label="Jobs (⌘4)"><span class="rune">ᚠ</span>Jobs</button>
+    <button class="nav" data-view="hearth" aria-label="Hearth (⌘5)"><span class="rune">ᛖ</span>Hearth</button>
+    <button class="nav" data-view="settings" aria-label="Settings (⌘6)"><span class="rune">ᛚ</span>Settings</button>
+  </nav>
+
+  <main id="main">
+    <!-- Converse -->
+    <section id="view-converse" class="view">
+      <div id="thread" role="log" aria-live="polite" aria-label="Conversation">
+        <div class="empty" id="thread-empty">
+          <img src="../renderer/urfael-runes.svg" alt="" width="170" />
+          <p>At your service. Type, or hold council by voice.</p>
+          <div id="suggest">
+            <button class="sug">Brief me on my day</button>
+            <button class="sug">What did we discuss yesterday?</button>
+            <button class="sug">Remind me to stretch in 45 minutes</button>
+          </div>
+          <p class="hint">Enter sends · Shift+Enter new line · ↑ recalls · ⌘K search the archive</p>
+        </div>
+      </div>
+      <button id="jump" hidden aria-label="Jump to latest">↓</button>
+      <div id="composer">
+        <button id="mic" aria-label="Push to talk" title="Speak (click, talk, click)">🎙</button>
+        <textarea id="input" rows="1" placeholder="Ask Urfael…" aria-label="Message Urfael"></textarea>
+        <button id="mute" aria-label="Toggle spoken replies" title="Spoken replies on/off">🔊</button>
+        <button id="send" aria-label="Send">↵</button>
+      </div>
+    </section>
+
+    <!-- Archive -->
+    <section id="view-archive" class="view" hidden>
+      <div id="arch-side">
+        <input id="arch-search" type="search" placeholder="Search every conversation…  ⌘K" aria-label="Search archive" />
+        <div id="arch-days" role="list"></div>
+      </div>
+      <div id="arch-body" class="reading">
+        <div class="empty"><p>Pick a day — or search. Every word is kept.</p></div>
+      </div>
+    </section>
+
+    <!-- Reminders -->
+    <section id="view-reminders" class="view" hidden>
+      <div class="pane">
+        <h2>Reminders</h2>
+        <form id="rem-form">
+          <input id="rem-text" type="text" placeholder="What shall I remind you of?" required aria-label="Reminder text" />
+          <input id="rem-mins" type="number" min="0" placeholder="in minutes" aria-label="Minutes from now" />
+          <select id="rem-repeat" aria-label="Repeat">
+            <option value="">once</option><option value="daily">daily</option><option value="weekly">weekly</option>
+          </select>
+          <button type="submit">Set</button>
+        </form>
+        <div id="rem-list"></div>
+      </div>
+    </section>
+
+    <!-- Jobs -->
+    <section id="view-jobs" class="view" hidden>
+      <div class="pane">
+        <h2>Background jobs</h2>
+        <div id="job-list"></div>
+        <pre id="job-log" hidden></pre>
+      </div>
+    </section>
+
+    <!-- Hearth -->
+    <section id="view-hearth" class="view" hidden>
+      <div class="pane">
+        <h2>Hearth</h2>
+        <div id="hearth-grid"></div>
+        <button id="distill" title="Distill this conversation into long-term memory now">✦ Distill memory</button>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view" hidden>
+      <div class="pane">
+        <h2>Settings</h2>
+        <div id="settings-grid"></div>
+        <p class="hint">Stored in <code>~/.claude/urfael/tts.env</code>. Keys (ElevenLabs, Picovoice) are edited there directly.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="console.js"></script>
+</body>
+</html>

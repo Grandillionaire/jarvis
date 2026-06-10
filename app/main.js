@@ -20,8 +20,9 @@ const SOCK = path.join(os.homedir(), '.claude', 'urfael', 'daemon.sock');
 const DAEMON = path.join(__dirname, 'daemon.js');
 
 let win = null;
+let consoleWin = null;
 let wakeWorker = null;
-function forward(channel, p) { if (win && !win.isDestroyed()) win.webContents.send(channel, p); }
+function forward(channel, p) { for (const w of [win, consoleWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, p); }
 function targetDisplay() { return screen.getDisplayNearestPoint(screen.getCursorScreenPoint()); } // multi-display: follow the cursor's screen
 
 // ---- brain daemon client ---------------------------------------------------
@@ -79,7 +80,56 @@ function daemonGet(p) {
   });
 }
 
+function daemonPostJson(p, body) {
+  return new Promise((resolve) => {
+    const req = http.request({ socketPath: SOCK, method: 'POST', path: p, headers: { 'Content-Type': 'application/json' }, timeout: 5000 }, (res) => {
+      let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null)); req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end(JSON.stringify(body || {}));
+  });
+}
+
 ipcMain.handle('urfael:ask', (_e, text) => askDaemon(text));
+
+// ---- Console window IPC: session archive, reminders, jobs, settings ----
+const MEMORY_DIR = path.join(os.homedir(), process.env.URFAEL_MEMORY_DIR || 'Urfael-memory');
+const SESSIONS_DIR = path.join(MEMORY_DIR, 'sessions');
+const SAFE_ID = /^[A-Za-z0-9-]{4,64}$/;
+ipcMain.handle('urfael:sessions-days', () => {
+  try { return fs.readdirSync(SESSIONS_DIR).filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)).map((f) => f.slice(0, -6)).sort().reverse(); } catch { return []; }
+});
+ipcMain.handle('urfael:session-read', (_e, day) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day))) return [];
+  try { return fs.readFileSync(path.join(SESSIONS_DIR, day + '.jsonl'), 'utf8').trim().split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
+});
+ipcMain.handle('urfael:sessions-search', (_e, q) => {
+  const needle = String(q || '').toLowerCase().slice(0, 200);
+  if (!needle) return [];
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(SESSIONS_DIR).filter((x) => x.endsWith('.jsonl')).sort().reverse().slice(0, 90)) {
+      for (const l of fs.readFileSync(path.join(SESSIONS_DIR, f), 'utf8').split('\n')) {
+        if (!l || !l.toLowerCase().includes(needle)) continue;
+        try { out.push(JSON.parse(l)); } catch {}
+        if (out.length >= 60) return out;
+      }
+    }
+  } catch {}
+  return out;
+});
+ipcMain.handle('urfael:reminders', () => daemonGet('/reminders'));
+ipcMain.handle('urfael:remind', (_e, spec) => daemonPostJson('/remind', spec));
+ipcMain.handle('urfael:reminder-cancel', (_e, id) => SAFE_ID.test(String(id)) ? daemonPostJson('/reminder/' + id + '/cancel') : null);
+ipcMain.handle('urfael:jobs', () => daemonGet('/jobs'));
+ipcMain.handle('urfael:job', (_e, id) => SAFE_ID.test(String(id)) ? daemonGet('/job/' + id) : null);
+ipcMain.handle('urfael:job-cancel', (_e, id) => SAFE_ID.test(String(id)) ? daemonPostJson('/job/' + id + '/cancel') : null);
+const SETTABLE = ['SAY_VOICE', 'SAY_RATE', 'TTS_PROVIDER', 'STT_PROVIDER', 'URFAEL_THEME', 'URFAEL_ACKS', 'URFAEL_ORB', 'CONSOLE_VOICE', 'WAKE_KEYWORD', 'WAKE_WORD_LABEL', 'WHISPER_MODEL', 'KOKORO_VOICE', 'ELEVENLABS_SPEED'];
+ipcMain.on('urfael:set-config', (_e, key, val) => {
+  if (!SETTABLE.includes(key)) return;
+  setTtsEnvValue(key, String(val).replace(/[\r\n]/g, '').slice(0, 200));
+  if (key === 'URFAEL_THEME') forward('urfael:theme', String(val));
+});
 ipcMain.handle('urfael:vitals', () => daemonGet('/vitals'));
 ipcMain.on('urfael:conversation-end', () => daemonPost('/conversation-end'));
 
@@ -148,6 +198,25 @@ function startWake() {
 ipcMain.on('urfael:wake-pause', () => wakeWorker && wakeWorker.postMessage('pause'));
 ipcMain.on('urfael:wake-done', () => wakeWorker && wakeWorker.postMessage('resume'));
 
+// ---- Console window: the desktop-app surface (chat, archive, reminders, jobs, settings) ----
+const CONSOLE_STATE = path.join(os.homedir(), '.claude', 'urfael', 'console-window.json');
+function createConsole() {
+  if (consoleWin && !consoleWin.isDestroyed()) { consoleWin.show(); consoleWin.focus(); return; }
+  let st = {}; try { st = JSON.parse(fs.readFileSync(CONSOLE_STATE, 'utf8')); } catch {}
+  consoleWin = new BrowserWindow({
+    width: st.width || 1100, height: st.height || 720, x: st.x, y: st.y,
+    minWidth: 780, minHeight: 500,
+    titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: '#14100a', show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  consoleWin.loadFile(path.join(__dirname, 'console', 'index.html'));
+  consoleWin.once('ready-to-show', () => consoleWin.show());
+  consoleWin.on('close', () => { try { fs.writeFileSync(CONSOLE_STATE, JSON.stringify(consoleWin.getBounds())); } catch {} }); // remember bounds (HIG)
+  consoleWin.on('closed', () => { consoleWin = null; });
+}
+ipcMain.on('urfael:open-console', createConsole);
+
 // ---- window (one big transparent click-through HUD) ------------------------
 function createWindow() {
   const { workArea } = targetDisplay();
@@ -205,6 +274,8 @@ function readTtsEnv() {
     wakeLabel: cfg.WAKE_WORD_LABEL || (cfg.WAKE_KEYWORD_PATH ? 'Urfael' : (cfg.WAKE_KEYWORD || 'Computer')),
     theme: cfg.URFAEL_THEME || 'sigil',
     acks: cfg.URFAEL_ACKS !== '0',   // instant spoken acknowledgments while thinking (default on)
+    orb: cfg.URFAEL_ORB === '1',     // the floating orb HUD is OPT-IN — the Console is the app
+    consoleVoice: cfg.CONSOLE_VOICE !== '0', // Console speaks the [SPOKEN] remark aloud (default on)
   };
   ttsEnvCache = { mtime, val: out };
   return out;
@@ -245,19 +316,25 @@ else app.on('second-instance', () => { if (win) { win.show(); } });
 
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'));
-  createWindow();
-  globalShortcut.register('CommandOrControl+Shift+U', toggle);
-  globalShortcut.register('CommandOrControl+Shift+T', cycleTheme);
-  globalShortcut.register('CommandOrControl+Shift+H', () => forward('urfael:hud-toggle'));
+  const orbOn = readTtsEnv().orb || process.env.URFAEL_ORB === '1';
+  createConsole();                                                 // the Console IS the app
+  globalShortcut.register('CommandOrControl+Shift+O', createConsole);
   globalShortcut.register('CommandOrControl+Shift+Q', shutdownAll);
-  win.once('ready-to-show', () => { win.showInactive(); win.show(); });
+  if (orbOn) {                                                     // ambient orb HUD — opt-in (URFAEL_ORB=1)
+    createWindow();
+    globalShortcut.register('CommandOrControl+Shift+U', toggle);
+    globalShortcut.register('CommandOrControl+Shift+T', cycleTheme);
+    globalShortcut.register('CommandOrControl+Shift+H', () => forward('urfael:hud-toggle'));
+    win.once('ready-to-show', () => { win.showInactive(); win.show(); });
+    startWake();
+    startGaze();
+  }
   ensureDaemon();
-  startWhisper();   // warm local STT (no-op unless STT_PROVIDER=whispercpp)
-  startWake();
-  startGaze();
+  startWhisper();   // warm local STT (Console push-to-talk + orb voice)
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); stopWhisper(); try { wakeWorker && wakeWorker.postMessage('stop'); } catch {} }); // daemon (brain) intentionally keeps running
-app.on('window-all-closed', () => app.quit());
+app.on('activate', () => { if (!consoleWin) createConsole(); });       // dock click → Console
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); }); // macOS: app lives in the dock; reopen via click
 ipcMain.on('urfael:hide', () => win && win.hide());
 ipcMain.on('urfael:quit', () => app.quit());
