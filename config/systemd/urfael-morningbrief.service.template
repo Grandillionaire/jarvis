@@ -1,0 +1,15 @@
+# Urfael morning brief — opt-in (Linux systemd --user equivalent of com.urfael.morningbrief.plist).
+# Oneshot job triggered by urfael-morningbrief.timer. install.sh fills {{HOME}}.
+# Enable the timer (NOT this service directly) with:
+#   systemctl --user enable --now urfael-morningbrief.timer
+[Unit]
+Description=Urfael morning brief (prepare + speak today's brief)
+Documentation=https://github.com/Grandillionaire/urfael
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash {{HOME}}/Urfael/_urfael/morning-brief.sh
+# Same PATH search order as the launchd plist, plus /usr/bin for distro-packaged binaries.
+Environment=PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+StandardOutput=journal
+StandardError=journal

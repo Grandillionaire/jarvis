@@ -10,6 +10,13 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 
+// First executable on PATH from a candidate list, or null. Used to pick the Linux TTS engine at call time.
+function firstOnPath(bins) {
+  const dirs = (process.env.PATH || '').split(':');
+  for (const bin of bins) for (const d of dirs) { if (!d) continue; try { fs.accessSync(path.join(d, bin), fs.constants.X_OK); return bin; } catch {} }
+  return null;
+}
+
 const TMP = os.tmpdir();
 function tmpfile(ext) { return path.join(TMP, `jv-${process.pid}-${Math.random().toString(36).slice(2)}.${ext}`); }
 function run(cmd, args, opts = {}) {
@@ -23,7 +30,9 @@ function run(cmd, args, opts = {}) {
 
 // ---- TTS ----
 // macOS `say` → AIFF, then ffmpeg → mp3 bytes (decodeAudioData-friendly, keeps the orb reactive).
+// On Linux, espeak-ng/espeak → WAV, then ffmpeg → mp3 bytes (same return contract: an mp3 Buffer).
 async function synthSay(text, cfg) {
+  if (process.platform !== 'darwin') return synthSayLinux(text, cfg);
   const aiff = tmpfile('aiff');
   const args = [];
   if (cfg.sayVoice) args.push('-v', cfg.sayVoice);
@@ -36,6 +45,27 @@ async function synthSay(text, cfg) {
   } catch (e) {
     throw new Error(/ffmpeg/.test(e.message) ? 'Local TTS needs ffmpeg — run: brew install ffmpeg' : 'macOS `say` failed');
   } finally { try { fs.unlinkSync(aiff); } catch {} }
+}
+// Linux TTS requirement (documented): espeak-ng (preferred) or espeak, plus ffmpeg. espeak writes WAV
+// directly (-w), so we synth → WAV, then ffmpeg WAV → mp3 bytes — same mp3 Buffer the renderer expects.
+// SAY_VOICE/SAY_RATE are honored where espeak supports them: -v <voice>, -s <words/min>.
+async function synthSayLinux(text, cfg) {
+  const engine = firstOnPath(['espeak-ng', 'espeak']);
+  if (!engine) throw new Error('Local TTS needs espeak — run: apt install espeak-ng (or espeak)');
+  const wav = tmpfile('wav');
+  const args = [];
+  // -v takes an espeak voice ('en', 'en-us+f3'), NOT a macOS voice name — the shipped default SAY_VOICE='Daniel'
+  // would make espeak fail, so only pass it when it looks like an espeak voice; otherwise use the engine default.
+  if (cfg.sayVoice && /^[a-z]{2,3}([-+][a-z0-9-]+)*$/i.test(String(cfg.sayVoice).trim())) args.push('-v', String(cfg.sayVoice).trim());
+  if (cfg.sayRate && /^\d+$/.test(String(cfg.sayRate).trim())) args.push('-s', String(cfg.sayRate).trim()); // espeak -s is wpm, like SAY_RATE
+  args.push('-w', wav, text);
+  try {
+    await run(engine, args);
+    const mp3 = await run('ffmpeg', ['-y', '-i', wav, '-f', 'mp3', '-'], { encoding: 'buffer' });
+    return Buffer.from(mp3);
+  } catch (e) {
+    throw new Error(/ffmpeg/.test(e.message) ? 'Local TTS needs ffmpeg — run: apt install ffmpeg' : `Local TTS \`${engine}\` failed`);
+  } finally { try { fs.unlinkSync(wav); } catch {} }
 }
 // Optional local upgrade: Kokoro-FastAPI (OpenAI-compatible, no auth) → mp3 bytes.
 function synthKokoro(text, cfg) {

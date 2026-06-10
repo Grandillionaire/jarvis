@@ -2,7 +2,7 @@
 
 > Read **[../SECURITY.md](../SECURITY.md)** before enabling hands/eyes, the autonomous loop, or full permissions.
 
-macOS only (for now). The `install.sh` at the repo root does most of this; the steps below are the detail.
+macOS is the primary, best-tested target; the `install.sh` at the repo root does most of this. The steps below are the detail. **Linux** is supported too (newer, less battle-tested): the same `install.sh` detects Linux and installs `systemd --user` units instead of launchd — see [Linux](#linux-newer-less-tested) at the end.
 
 ## 1. Prerequisites
 - **Claude Code on a paid plan (Pro or Max).** Run `claude` once and sign in *before* starting Urfael.
@@ -129,6 +129,32 @@ curl -s -X POST --unix-socket ~/.claude/urfael/daemon.sock http://x/job/<id>/can
 ## Permissions Urfael may ask macOS for
 Microphone (voice), and — only if you enable computer-use — Accessibility, Automation, Screen Recording,
 Calendars, Reminders. Grant them to the app/terminal hosting the agent.
+
+## Linux (newer, less tested)
+macOS is the primary target; Linux support is newer and less battle-tested, but the headless brain core
+and the Electron GUI run there. The scripts (`morning-brief.sh`, `urfael-start.sh`, `urfael-stop.sh`) detect
+the OS via `uname` and the daemon/GUI is unchanged. What differs from macOS:
+
+- **Notifications:** `notify-send` instead of `osascript`.
+- **Local TTS:** `spd-say` (speech-dispatcher) or `espeak-ng` instead of `say`; `SAY_VOICE` passes through as
+  the voice/language name. ElevenLabs is unchanged (its mp3 plays via `ffplay`/`mpg123`/`paplay`/`aplay`).
+- **Vision/screenshots:** `grim` (Wayland) or `scrot`/`maim`/`import` (X11) instead of `screencapture`.
+- **Service manager:** a `systemd --user` unit named `urfael-daemon` instead of the launchd plist — install
+  `install.sh` writes the `systemd --user` units for you on Linux. `whisper-server`/`ffmpeg` are found on the
+  normal `PATH` (`/usr/bin`), same as Homebrew on macOS.
+
+Dependency line (Debian/Ubuntu; adjust for your distro):
+```bash
+sudo apt install ffmpeg espeak-ng libnotify-bin grim    # + whisper.cpp (build whisper-server yourself)
+```
+Create `~/.config/systemd/user/urfael-daemon.service` pointing at `node <repo>/app/daemon.js` (mirror the
+plist's env: `PATH`, optional `URFAEL_YOLO`, `URFAEL_HEARTBEAT_MINS`, etc.), then:
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now urfael-daemon    # start the always-on brain
+cd app && npm start                            # the overlay UI
+```
+`urfael-start.sh` / `urfael-stop.sh` then drive `systemctl --user start/stop urfael-daemon` for you.
 
 ## Updating / uninstalling
 - Update: `git pull && cd app && npm install`.

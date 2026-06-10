@@ -85,7 +85,7 @@ You have tools to operate the machine (browser, desktop, files, shell, connector
   Confirm once before any create/move/delete. Never claim success on a write that failed.
 - **Gmail** — scan for replies needed; **draft only, never send.**
 - **Live info** — free APIs in `_urfael/apis.md` (weather/news/search/finance); prefer Tavily for web search.
-- **Browser** (Playwright), **Vision** (`screencapture -x /tmp/v.png` then Read it), **Desktop** (macos-automator).
+- **Browser** (Playwright), **Vision** (macOS: `screencapture -x /tmp/v.png`; Linux: first available of `grim /tmp/v.png` on Wayland, else `scrot`/`maim`/`import -window root /tmp/v.png` — then Read it), **Desktop** (macos-automator).
   These are opt-in MCP servers — see SECURITY.md.
 
 ## Showing your work

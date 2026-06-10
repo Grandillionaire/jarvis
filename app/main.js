@@ -299,11 +299,17 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
 }
 
-// ---- macOS menu-bar Tray (third lightweight surface) -----------------------
-// A monochrome Template image evoking the Uruz rune (ASCII). The icon is built at runtime from an
+// ---- menu-bar / system-tray (third lightweight surface) --------------------
+// macOS: a monochrome Template image evoking the Uruz rune (ASCII). The icon is built at runtime from a
 // macOS Template image — a black-on-transparent PNG (Electron's nativeImage CANNOT decode SVG data URLs;
 // it would return an empty image and `new Tray()` would throw). The @2x file is picked up automatically.
+// Linux: setTemplateImage is a no-op there and a black-on-transparent icon is invisible on most panels,
+// so we load a normal gold (visible) rune icon instead, decoded from an embedded PNG data URL.
+const TRAY_ICON_LINUX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAQUlEQVR42mNgGAXEgOeHGv6DME0Mpbrh6AZTzQJcBlNsASGDyTYcmwFUMRyfZooMJ6Rx1OBRg0e0wTDNlMgPLQAAWXg7sAHZVNgAAAAASUVORK5CYII=';
 function trayIcon() {
+  if (process.platform === 'linux') {
+    return nativeImage.createFromDataURL(TRAY_ICON_LINUX); // gold rune; NOT a template image (panels don't tint, would be invisible)
+  }
   const img = nativeImage.createFromPath(path.join(__dirname, 'renderer', 'trayTemplate.png'));
   img.setTemplateImage(true); // monochrome; macOS tints it for the active menu-bar appearance
   return img;
@@ -336,7 +342,7 @@ async function refreshTray() {
   tray.setContextMenu(buildTrayMenu(status));
 }
 function createTray() {
-  if (process.platform !== 'darwin' || tray) return; // menu-bar presence is macOS-only
+  if ((process.platform !== 'darwin' && process.platform !== 'linux') || tray) return; // menu-bar (macOS) / system-tray (Linux) presence
   try {
     tray = new Tray(trayIcon());
     tray.setToolTip('Urfael');
@@ -403,7 +409,7 @@ ipcMain.handle('urfael:tts', async (_e, text) => { const b = await voice.synth(t
 ipcMain.handle('urfael:stt', async (_e, buf) => voice.transcribe(Buffer.from(buf), readTtsEnv()));                       // returns transcript text
 
 let whisperProc = null, whisperStopped = false, whisperRestarts = 0;
-function whisperBin() { for (const p of ['/opt/homebrew/bin/whisper-server', '/usr/local/bin/whisper-server']) { try { fs.accessSync(p); return p; } catch {} } return 'whisper-server'; }
+function whisperBin() { for (const p of ['/opt/homebrew/bin/whisper-server', '/usr/local/bin/whisper-server', '/usr/bin/whisper-server']) { try { fs.accessSync(p); return p; } catch {} } return 'whisper-server'; } // Linux: whisper.cpp typically installs to /usr/bin or /usr/local/bin
 function startWhisper() {
   const cfg = readTtsEnv();
   if (cfg.sttProvider !== 'whispercpp') return;                                  // only the local-STT path needs the server
@@ -432,7 +438,7 @@ else app.on('second-instance', () => { if (win) { win.show(); } });
 app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'));
   buildMenu();                                                     // native menu bar + accelerators
-  createTray();                                                    // macOS menu-bar presence (third surface; no-op off-darwin)
+  createTray();                                                    // macOS menu-bar / Linux system-tray presence (third surface; no-op on other platforms)
   const orbOn = readTtsEnv().orb || process.env.URFAEL_ORB === '1';
   createConsole();                                                 // the Console IS the app
   globalShortcut.register('CommandOrControl+Shift+O', createConsole);

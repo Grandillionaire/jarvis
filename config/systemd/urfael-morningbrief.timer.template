@@ -1,0 +1,14 @@
+# Urfael morning brief timer — fires urfael-morningbrief.service at 08:00 daily.
+# Change OnCalendar to retime (e.g. 07:30, or "Mon..Fri 08:00" for weekdays only).
+# Enable with:  systemctl --user enable --now urfael-morningbrief.timer
+[Unit]
+Description=Urfael morning brief — daily at 08:00
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+# Run a missed brief (e.g. machine asleep at 08:00) once on next wake.
+Persistent=true
+Unit=urfael-morningbrief.service
+
+[Install]
+WantedBy=timers.target

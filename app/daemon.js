@@ -361,7 +361,7 @@ function loadSessions() {
 // ---- proactive delivery: notification + spoken aloud + phone push -------------------------------
 // Used by reminders and the heartbeat. Speaks via local `say` (free, works with the overlay closed);
 // the overlay's own audio path is only fed during /ask turns, so there is never double speech.
-function sayVoiceArgs() { // respect the user's configured voice/rate (tts.env), best-effort
+function sayVoiceArgs() { // respect the user's configured voice/rate (tts.env), best-effort — macOS `say` flags
   try {
     const env = fs.readFileSync(path.join(JDIR, 'tts.env'), 'utf8');
     const v = (env.match(/^SAY_VOICE=(.+)$/m) || [])[1], r = (env.match(/^SAY_RATE=(.+)$/m) || [])[1];
@@ -369,11 +369,41 @@ function sayVoiceArgs() { // respect the user's configured voice/rate (tts.env),
     return a;
   } catch { return []; }
 }
+// First Linux speech engine present on PATH, mapped to its argv (each takes the text as a trailing positional).
+// We PREFER espeak-ng/espeak because their flags map cleanly: -v <voice> (only an espeak-style voice like
+// 'en'/'en-us+f3', NOT a macOS voice name) and -s <words/min> (SAY_RATE is already wpm). spd-say is the
+// fallback with engine DEFAULTS — its -o is an output MODULE (not a voice) and its -r is -100..100 (not wpm),
+// so passing the macOS SAY_VOICE/SAY_RATE there is wrong; we omit them rather than mis-speak. The shipped
+// default SAY_VOICE is a macOS voice ('Daniel'), so isEspeakVoice() filters it out -> engine default voice.
+// Returns null when no engine is installed so notifyOwner() stays best-effort/silent (no throw).
+const isEspeakVoice = (v) => /^[a-z]{2,3}([-+][a-z0-9-]+)*$/i.test(String(v || '').trim()); // 'en', 'en-us', 'en+f3', 'mb-en1' — not 'Daniel'/'Samantha'
+function linuxSpeakCmd(text) {
+  let voice, rate;
+  try {
+    const env = fs.readFileSync(path.join(JDIR, 'tts.env'), 'utf8');
+    voice = (env.match(/^SAY_VOICE=(.+)$/m) || [])[1];
+    rate = (env.match(/^SAY_RATE=(.+)$/m) || [])[1];
+  } catch {}
+  const onPath = (bin) => (process.env.PATH || '').split(':').some((d) => { if (!d) return false; try { fs.accessSync(path.join(d, bin), fs.constants.X_OK); return true; } catch { return false; } });
+  for (const bin of ['espeak-ng', 'espeak']) if (onPath(bin)) {
+    const a = []; if (voice && isEspeakVoice(voice)) a.push('-v', voice.trim()); if (rate && /^\d+$/.test(rate.trim())) a.push('-s', rate.trim()); a.push(text);
+    return { bin, args: a };
+  }
+  if (onPath('spd-say')) return { bin: 'spd-say', args: ['--wait', '--', text] }; // engine default voice/rate — name/wpm don't map
+  return null;
+}
 function notifyOwner(text, { speak = true } = {}) {
   const clean = String(text || '').replace(/[\\"]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 350);
   if (!clean) return;
-  try { const p = spawn('osascript', ['-e', `display notification "${clean}" with title "Urfael"`], { stdio: 'ignore' }); p.unref(); } catch {}
-  if (speak) { try { const p = spawn('/usr/bin/say', [...sayVoiceArgs(), clean], { stdio: 'ignore' }); p.unref(); } catch {} }
+  if (process.platform === 'darwin') {
+    try { const p = spawn('osascript', ['-e', `display notification "${clean}" with title "Urfael"`], { stdio: 'ignore' }); p.unref(); } catch {}
+    if (speak) { try { const p = spawn('/usr/bin/say', [...sayVoiceArgs(), clean], { stdio: 'ignore' }); p.unref(); } catch {} }
+  } else if (process.platform === 'linux') {
+    // Linux requirements (documented): notify-send (libnotify) for desktop notifications, and one of
+    // spd-say (speech-dispatcher) / espeak-ng / espeak for speech. Both are best-effort + non-throwing.
+    try { const p = spawn('notify-send', ['Urfael', clean], { stdio: 'ignore' }); p.unref(); } catch {}
+    if (speak) { try { const c = linuxSpeakCmd(clean); if (c) { const p = spawn(c.bin, c.args, { stdio: 'ignore' }); p.unref(); } } catch {} }
+  }
   try { bridge.notifyAll(clean).catch(() => {}); } catch {}
 }
 function deliverReminder(r) {

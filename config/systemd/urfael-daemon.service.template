@@ -1,0 +1,29 @@
+# Urfael brain daemon — always-on (Linux systemd --user equivalent of com.urfael.daemon.plist).
+# install.sh fills {{HOME}}, {{NODE}} and {{REPO}}. Enable with:
+#   systemctl --user enable --now urfael-daemon
+[Unit]
+Description=Urfael brain daemon (always-on, headless)
+Documentation=https://github.com/Grandillionaire/urfael
+After=default.target
+
+[Service]
+Type=simple
+ExecStart={{NODE}} {{REPO}}/app/daemon.js
+Restart=on-failure
+RestartSec=3
+# Same PATH search order as the launchd plist, plus /usr/bin for distro-packaged binaries.
+Environment=PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+# Uncomment to opt into the unrestricted agent (read SECURITY.md, run sandboxed):
+# Environment=URFAEL_YOLO=1
+# Heartbeat: every N minutes Urfael runs your vault's HEARTBEAT.md checklist and only speaks
+# up if something needs you. Off unless set. Active hours bound it (default 8-23).
+# Environment=URFAEL_HEARTBEAT_MINS=30
+# Environment=URFAEL_HEARTBEAT_HOURS=8-23
+# Per-turn watchdog in seconds (default 120; long work belongs in background jobs):
+# Environment=URFAEL_TURN_TIMEOUT_S=180
+# systemd captures stdout/stderr into the journal: journalctl --user -u urfael-daemon -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

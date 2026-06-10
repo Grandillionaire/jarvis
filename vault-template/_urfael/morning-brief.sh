@@ -7,9 +7,16 @@ set -uo pipefail
 SOCK="$HOME/.claude/urfael/daemon.sock"
 ENVF="$HOME/.claude/urfael/tts.env"
 
-# 1) make sure the brain is up (it's launchd-managed, but be safe)
+# OS detection: macOS is the primary target; Linux runs the headless core + GUI shell-outs.
+case "$(uname -s)" in Darwin) OS=mac;; Linux) OS=linux;; *) OS=other;; esac
+
+# 1) make sure the brain is up (it's service-managed, but be safe)
 if ! curl -s --max-time 3 --unix-socket "$SOCK" http://x/health >/dev/null 2>&1; then
-  launchctl kickstart "gui/$(id -u)/com.urfael.daemon" 2>/dev/null
+  if [ "$OS" = mac ]; then
+    launchctl kickstart "gui/$(id -u)/com.urfael.daemon" 2>/dev/null
+  elif [ "$OS" = linux ]; then
+    systemctl --user start urfael-daemon 2>/dev/null
+  fi
   for i in $(seq 1 20); do [ -S "$SOCK" ] && curl -s --max-time 2 --unix-socket "$SOCK" http://x/health >/dev/null 2>&1 && break; sleep 1; done
 fi
 
@@ -31,7 +38,11 @@ print(out)
 [ -z "$BRIEF" ] && BRIEF="Good morning, sir. I could not reach your schedule this morning."
 
 # 3) desktop notification
-osascript -e "display notification \"Your morning brief is ready.\" with title \"Urfael\" sound name \"\"" 2>/dev/null || true
+if [ "$OS" = mac ]; then
+  osascript -e "display notification \"Your morning brief is ready.\" with title \"Urfael\" sound name \"\"" 2>/dev/null || true
+elif [ "$OS" = linux ]; then
+  notify-send "Urfael" "Your morning brief is ready." 2>/dev/null || true
+fi
 
 # 4) speak it — local `say` by default (free, no key), ElevenLabs only if configured
 PROVIDER="$(grep '^TTS_PROVIDER=' "$ENVF" 2>/dev/null | cut -d= -f2)"; PROVIDER="${PROVIDER:-say}"
@@ -55,11 +66,34 @@ if [ "$PROVIDER" = "elevenlabs" ] && [ -n "$KEY" ]; then
     "https://api.elevenlabs.io/v1/text-to-speech/$VOICE?optimize_streaming_latency=3" \
     -H "xi-api-key: $KEY" -H 'Content-Type: application/json' \
     --data-binary "$(python3 -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"model_id":sys.argv[2],"voice_settings":{"stability":0.85,"similarity_boost":0.9,"style":0.0,"use_speaker_boost":True,"speed":1.0}}))' "$SPEAK" "$MODEL")")
-  [ "$code" = "200" ] && afplay "$TMP" 2>/dev/null
+  if [ "$code" = "200" ]; then
+    if [ "$OS" = mac ]; then
+      afplay "$TMP" 2>/dev/null
+    elif [ "$OS" = linux ]; then
+      # play the ElevenLabs mp3 with whatever portable player is present (ffmpeg ships ffplay)
+      if command -v ffplay >/dev/null 2>&1; then ffplay -nodisp -autoexit -loglevel quiet "$TMP" 2>/dev/null
+      elif command -v mpg123 >/dev/null 2>&1; then mpg123 -q "$TMP" 2>/dev/null
+      elif command -v paplay >/dev/null 2>&1; then paplay "$TMP" 2>/dev/null
+      elif command -v aplay  >/dev/null 2>&1; then aplay -q "$TMP" 2>/dev/null; fi
+    fi
+  fi
   rm -f "$TMP"
 else
-  # DEFAULT: local macOS `say` — free, no API key. This is what makes the brief speak out of the box.
-  [ -n "$SPEAK" ] && /usr/bin/say ${SAY_VOICE:+-v "$SAY_VOICE"} "$SPEAK" 2>/dev/null
+  # DEFAULT: local TTS — free, no API key. This is what makes the brief speak out of the box.
+  if [ "$OS" = mac ]; then
+    # macOS `say`
+    [ -n "$SPEAK" ] && /usr/bin/say ${SAY_VOICE:+-v "$SAY_VOICE"} "$SPEAK" 2>/dev/null
+  elif [ "$OS" = linux ]; then
+    # Linux: prefer espeak-ng/espeak (SAY_VOICE/SAY_RATE map cleanly), fall back to spd-say (engine defaults —
+    # its voice/rate flags don't take a macOS voice name or wpm). SAY_VOICE is honored only if it's an
+    # espeak-style voice ('en', 'en-us+f3'); the shipped default 'Daniel' is macOS-only and skipped.
+    case "$SAY_VOICE" in [A-Za-z][A-Za-z] | [A-Za-z][A-Za-z][-+]* | [A-Za-z][A-Za-z][A-Za-z] | [A-Za-z][A-Za-z][A-Za-z][-+]*) EV="$SAY_VOICE";; *) EV="";; esac
+    if [ -n "$SPEAK" ]; then
+      if command -v espeak-ng >/dev/null 2>&1; then espeak-ng ${EV:+-v "$EV"} "$SPEAK" 2>/dev/null
+      elif command -v espeak >/dev/null 2>&1; then espeak ${EV:+-v "$EV"} "$SPEAK" 2>/dev/null
+      elif command -v spd-say >/dev/null 2>&1; then spd-say --wait "$SPEAK" 2>/dev/null; fi
+    fi
+  fi
 fi
 # phone push (best-effort; silent no-op if no bridge.env / node)
 REPO_DIR="$(cat "$HOME/.claude/urfael/repo" 2>/dev/null || echo "$HOME/urfael-src")"

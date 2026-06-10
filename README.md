@@ -95,6 +95,18 @@ The installer checks all of it and downloads the ~142 MB local speech model on f
 
 The brain uses Claude Code's model aliases, so it always tracks the latest models your plan supports. Opus escalation needs a **Max** plan; on **Pro**, set `URFAEL_OPUS_MODEL=sonnet` to keep everything on Sonnet (see [docs/SETUP.md](docs/SETUP.md)).
 
+### Linux
+
+macOS is the primary, best-tested target. Linux is **newer and less battle-tested**, but the headless brain core and the Electron GUI run there too: notifications go through `notify-send`, local TTS through `espeak-ng`/`spd-say`, screenshots through `grim`/`scrot`/`maim`/`import`, and the always-on daemon through a `systemd --user` unit instead of launchd. ElevenLabs/whisper.cpp work unchanged.
+
+```bash
+sudo apt install ffmpeg espeak-ng libnotify-bin grim   # + build whisper.cpp (whisper-server) yourself
+systemctl --user enable --now urfael-daemon            # start the always-on brain
+cd app && npm start
+```
+
+Swap `grim` for `scrot`/`maim`/`imagemagick` on X11. `install.sh` detects Linux and installs the `systemd --user` units for you (start with `systemctl --user enable --now urfael-daemon`; see [docs/SETUP.md](docs/SETUP.md)).
+
 ## A note on power
 
 When you opt into full capability with `URFAEL_YOLO=1`, Urfael becomes a real agent with shell, file, and network access that also reads untrusted email and web. Run that mode in a VM or a throwaway account, and read [SECURITY.md](SECURITY.md) first.

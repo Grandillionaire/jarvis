@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Fully stop Urfael: the overlay UI AND the always-on brain daemon.
+# macOS uses launchd (launchctl); Linux uses systemd --user (urfael-daemon).
 set -uo pipefail
 PLIST="$HOME/Library/LaunchAgents/com.urfael.daemon.plist"
+case "$(uname -s)" in Darwin) OS=mac;; Linux) OS=linux;; *) OS=other;; esac
 
 echo "Stopping Urfael…"
-# 1) stop the launchd-managed brain daemon (and stop it relaunching)
-launchctl unload "$PLIST" 2>/dev/null && echo "  ✓ brain daemon unloaded"
+# 1) stop the service-managed brain daemon (and stop it relaunching)
+if [ "$OS" = linux ]; then
+  systemctl --user stop urfael-daemon 2>/dev/null && echo "  ✓ brain daemon stopped (systemd --user)"
+else
+  launchctl unload "$PLIST" 2>/dev/null && echo "  ✓ brain daemon unloaded"
+fi
 # 2) tell any non-launchd daemon to shut down, then make sure it (and its claude children) are gone.
 #    Patterns are anchored to the recorded repo path and we reap only the daemon's OWN children — so an
 #    unrelated `claude` session elsewhere on the machine is never killed as collateral.
