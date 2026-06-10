@@ -55,13 +55,15 @@ Everything below is opt-in and guard-railed. Urfael ships without unrestricted p
 - **Voice.** Tap the orb or speak the wake word, then talk and it answers in a real voice over an audio-reactive orb. The spoken comment streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
 - **Memory.** An Obsidian markdown vault holds its knowledge and long-term memory. Each conversation auto-distills into a private, versioned note it reloads next session.
 - **Skills.** After it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch — it gets faster at the things you actually do.
+- **Total recall.** Every conversation is archived to plain JSONL in your private memory repo. "What did I say about the Berlin trip?" — it greps its own history and cites the date. `urfael sessions search <query>` from any terminal.
+- **Terminal.** The same brain answers in your shell: `urfael "summarize my inbox"` streams the answer live; `urfael status`, `jobs`, `reminders`, `remind`, `sessions search` manage the rest. No second config — it's one daemon.
 - **Reminders.** "Remind me in 20 minutes" / "every morning at 8" just works — persisted in the daemon, fired as a notification, spoken aloud, and pushed to your phone, with every window closed.
 - **Heartbeat (opt-in).** Every N minutes it runs your `HEARTBEAT.md` checklist — upcoming events, urgent email, slipping deadlines — and stays silent unless something genuinely needs you.
 - **Calendar and email.** Read, create, and update Google and Apple Calendar plus Reminders. Drafts email, never sends.
 - **Hands and eyes.** Drives the browser with Playwright, controls macOS apps, windows, and files, and sees the screen.
 - **Visuals.** Ask for a chart or diagram and it makes one, in matplotlib, Mermaid, or interactive HTML.
 - **Morning brief.** A spoken 8am rundown of your calendar, inbox, and open loops, with no window open.
-- **Phone control.** Drive it from Telegram or Discord, owner-allowlisted. Remote turns are sandboxed and read-only by default — a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in).
+- **Phone control.** Drive it from Telegram or Discord, owner-allowlisted — text or **voice memos** (transcribed locally on your Mac, never by a cloud STT). Remote turns are sandboxed and read-only by default — a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in).
 - **Background jobs.** Hand off long work (autonomous coding, deep research) to detached, cancellable jobs that don't tie up the conversation and push your phone when they're done.
 - **Autonomous coding.** A `/goal` loop with caps, timeouts, and kill-switches. It never pushes.
 

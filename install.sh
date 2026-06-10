@@ -72,8 +72,11 @@ if [ "$REPO" != "$HOME/urfael" ]; then
   else ln -sfn "$REPO" "$HOME/urfael"; ok "linked ~/urfael → $REPO (daemon/scripts use this path)"; fi
 fi
 
-# 6) app deps
+# 6) app deps + the `urfael` terminal command
 if [ -d "$REPO/app/node_modules" ]; then ok "app deps installed"; else ( cd "$REPO/app" && npm install --silent ) && ok "npm install (app)"; fi
+BINDIR="$(dirname "$(command -v node || echo /opt/homebrew/bin/node)")"
+if [ -w "$BINDIR" ]; then ln -sfn "$REPO/app/cli.js" "$BINDIR/urfael" && chmod +x "$REPO/app/cli.js" && ok "linked \`urfael\` CLI into $BINDIR"
+else warn "can't write $BINDIR — run: npm link --prefix \"$REPO/app\" (or alias urfael=\"node $REPO/app/cli.js\")"; fi
 
 # 7) launchd plists — fill placeholders, but DO NOT auto-load (you choose what runs in the background)
 NODE="$(command -v node || echo /opt/homebrew/bin/node)"

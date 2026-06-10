@@ -98,6 +98,7 @@ class Session {
     }
     if (e.type === 'assistant' && !this.curSilent) { for (const b of (e.message?.content || [])) if (b.type === 'tool_use') sendThinking({ tool: b.name }); }
     if (e.type === 'result') {
+      this.lastUsage = e.usage || (e.modelUsage ? Object.values(e.modelUsage)[0] : null) || null; // tokens for telemetry (session is serialized, so this is race-free)
       if (this.speakCur && !this.spokenDone) {
         if (/\[SPOKEN\]/i.test(this.acc)) this._emitSpoken(true); // open tag, never closed → flush what's pending (capped)
         if (!this.spokenSent) {                   // fallback: no [SPOKEN] tags → speak one short line so it isn't silent
@@ -158,7 +159,7 @@ let convoModel = MODELS.sonnet;   // sticky: escalate to Opus and stay for the c
 let softTurns = 0;                // consecutive non-hard turns while on Opus → de-escalate back to Sonnet
 let turnCounter = 0;
 const brain = {
-  warmUp() { getSession(MODELS.sonnet).ask('Reply with exactly: ready').catch(() => {}); },
+  warmUp() { getSession(MODELS.sonnet).ask('Reply with exactly: ready', { silent: true }).catch(() => {}); }, // silent: never leak the warm-up into a client stream
   async ask(text) {
     if (classifyModel(text) === MODELS.opus) { convoModel = MODELS.opus; softTurns = 0; }
     else if (convoModel === MODELS.opus && ++softTurns >= 3) { convoModel = MODELS.sonnet; softTurns = 0; } // don't stay pinned to Opus forever
@@ -167,10 +168,13 @@ const brain = {
     lastLocalTurn = Date.now();   // heartbeat backs off while the owner is actively conversing
     sendThinking({ reset: true, model, turnId });
     const t0 = Date.now();
-    const reply = await getSession(model).ask(text, { speak: true, turnId });
+    const session = getSession(model);
+    const reply = await session.ask(text, { speak: true, turnId });
     const ms = Date.now() - t0;
-    logEvent({ ev: 'turn', model, in: text.length, out: (reply || '').length, ms });
+    const u = session.lastUsage || {};
+    logEvent({ ev: 'turn', model, in: text.length, out: (reply || '').length, ms, tokIn: u.input_tokens || 0, tokOut: u.output_tokens || 0, tokCache: u.cache_read_input_tokens || 0 });
     transcript.push({ user: text, urfael: reply });
+    recordSession({ t: new Date().toISOString(), channel: 'local', model, user: text, urfael: reply, ms });
     return { text: reply, model, ms };
   },
   endConversation() { convoModel = MODELS.sonnet; softTurns = 0; },
@@ -208,6 +212,7 @@ const brain = {
         let txt = '';
         try { const j = JSON.parse(out); txt = typeof j.result === 'string' ? j.result : ''; } catch {}
         logEvent({ ev: 'remote_turn', profile: String(profile.name), model, permissionMode: permMode, allowedTools: profile.allowedTools.join(','), in: text.length, out: txt.length });
+        recordSession({ t: new Date().toISOString(), channel: String(profile.name), model, user: text, urfael: txt });
         resolve({ text: txt || '(no reply)', model });
       });
       proc.on('error', () => { clearTimeout(timer); inflightScoped.delete(proc); resolve({ text: '(brain spawn failed)', model }); });
@@ -231,11 +236,11 @@ function tailLines(file, maxBytes = 65536) { // read only the log tail — never
 let memCommitCache = { t: 0, n: 0 }; // vitals is polled every 5s by the HUD — don't fork git that often
 function vitals() {
   const today = new Date().toISOString().slice(0, 10);
-  let turnsToday = 0, errors = 0, lat = [];
+  let turnsToday = 0, errors = 0, lat = [], tokToday = 0;
   for (const ln of tailLines(LOGFILE).slice(-500)) {
     let e; try { e = JSON.parse(ln); } catch { continue; }
     const day = (e.t || '').slice(0, 10);
-    if (e.ev === 'turn' && day === today) { turnsToday++; if (e.ms) lat.push(e.ms); }
+    if (e.ev === 'turn' && day === today) { turnsToday++; if (e.ms) lat.push(e.ms); tokToday += (e.tokIn || 0) + (e.tokOut || 0); }
     if (e.ev === 'brain_exit' && day === today) errors++;
   }
   const avgMs = lat.length ? Math.round(lat.slice(-10).reduce((a, b) => a + b, 0) / Math.min(lat.length, 10)) : 0;
@@ -244,7 +249,19 @@ function vitals() {
     try { n = parseInt(require('child_process').execFileSync('git', ['-C', MEMORY_DIR, 'rev-list', '--count', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(), 10) || 0; } catch {}
     memCommitCache = { t: Date.now(), n };
   }
-  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+}
+
+// ---- session archive: every turn appended to a daily JSONL in the private memory repo -----------
+// This is Urfael's verbatim recall: "what did we discuss last Tuesday" is a Grep away (for the brain)
+// or `urfael sessions search` (for you). Lives in MEMORY_DIR so the distill pass commits it with the
+// rest of memory — versioned, private, plain text. No database.
+const SESSIONS_DIR = path.join(MEMORY_DIR, 'sessions');
+function recordSession(entry) {
+  try {
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    fs.appendFileSync(path.join(SESSIONS_DIR, entry.t.slice(0, 10) + '.jsonl'), JSON.stringify(entry) + '\n');
+  } catch {}
 }
 
 // ---- proactive delivery: notification + spoken aloud + phone push -------------------------------
@@ -323,10 +340,15 @@ function distill() {
     `- Durable facts/decisions/projects/people/commitments -> merge concisely into ${MEMORY_DIR}/MEMORY.md (right section, no dupes).\n` +
     `- If the user CORRECTED you or something went wrong -> append a lesson to ${MEMORY_DIR}/LESSONS.md (mistake -> rule -> trigger).\n` +
     `- If you noticed a recurring preference or way the user works -> add it to ${MEMORY_DIR}/WORKFLOW.md.\n` +
+    `- USER MODEL: if you learned something about WHO the user is (role, projects, people, communication ` +
+    `style, what they value in answers) -> merge it into ${MEMORY_DIR}/USER.md (keep under ~40 lines; ` +
+    `update in place, never just append).\n` +
     `- REFLECT: if this conversation completed a multi-step task whose PROCEDURE is reusable (a workflow ` +
     `figured out, an API wrangled, a fix with a non-obvious path), write or update a skill file in ` +
     `${VAULT}/_urfael/skills/<short-kebab-slug>.md — purpose, numbered steps, gotchas; terse, under ~40 lines. ` +
     `Routine chat/Q&A does NOT warrant a skill.\n` +
+    `- CURATE: if this conversation PROVED an existing skill or memory entry wrong or stale, fix or delete ` +
+    `it now — a wrong skill is worse than none.\n` +
     `- Always append a one-line note to ${MEMORY_DIR}/log/<YYYY-MM-DD-HHMM>.md summarizing the conversation.\n` +
     'These files are injected into EVERY session, so keep them tight: MEMORY.md under ~150 lines; consolidate/prune, do not just append.\n' +
     `Then if you changed anything: cd ${MEMORY_DIR} && git add -A && git commit -m "memory: <short summary>" && git push\n` +

@@ -80,13 +80,26 @@ no writes, no shell, no web) — see SECURITY.md. Web lookup / phone capture are
    launchctl load -w ~/Library/LaunchAgents/com.urfael.telegram.plist   # Telegram (Node 18+)
    launchctl load -w ~/Library/LaunchAgents/com.urfael.discord.plist    # Discord (Node 22+, MESSAGE CONTENT intent)
    ```
-3. DM your bot. Only your single allowlisted id is ever answered; everyone else is dropped before the brain
+3. DM your bot — text or a **voice memo** (transcribed locally via whisper-cpp on your Mac; the
+   transcript is echoed back so you see what was heard). Only your single allowlisted id is ever answered; everyone else is dropped before the brain
    sees anything. Every turn is appended to `~/.claude/urfael/bridge-audit.log` and rate-limited.
 
 Once a bridge is configured, autonomous jobs and the morning brief also **push to your phone** when they
 finish (one-way, owner-only — there's no way to make it message anyone else).
 
-## 7. Reminders & heartbeat (the proactive layer)
+## 7. The `urfael` terminal command
+The installer links a CLI onto your PATH (or run `node app/cli.js`). It talks to the same daemon:
+```bash
+urfael "what's on my calendar tomorrow?"     # streams the answer, shows tool activity
+urfael status                                # model, latency, turns, tokens today, uptime
+urfael remind "stretch" --in 45              # scheduling without speaking
+urfael sessions search "berlin trip"         # full-text search across every past conversation
+urfael jobs · job <id> · cancel <id> · reminders · health · shutdown
+```
+Conversations from every surface (orb, CLI, phone) are archived per-day as JSONL in
+`~/Urfael-memory/sessions/` — private, versioned with your memory repo, grep-able by you and by Urfael.
+
+## 8. Reminders & heartbeat (the proactive layer)
 
 **Reminders need zero setup.** Say "remind me in 20 minutes to call Stefan" (or type it) — Urfael schedules
 it in the daemon and it fires as a macOS notification + spoken aloud + a phone push (if a bridge is
@@ -103,7 +116,7 @@ you** (the `HEARTBEAT_OK` contract). It skips beats while you're actively talkin
 `URFAEL_HEARTBEAT_HOURS` (default `8-23`) so it never pipes up at 3am. Edit `HEARTBEAT.md` to control
 exactly what it watches; keep it short — every line costs tokens on every beat.
 
-## 8. Background jobs (so long work doesn't tie up the conversation)
+## 9. Background jobs (so long work doesn't tie up the conversation)
 Ask Urfael (by voice or chat) to run something in the background and it dispatches a detached, cancellable
 job via the `/job` command. Coding jobs run through the guard-railed `/goal` loop (isolated `--repo`, never
 pushes); research jobs run sandboxed and drop a note in your vault. Manage them over the socket:

@@ -1,7 +1,7 @@
 {
   "name": "urfael-app",
   "version": "0.1.0",
-  "description": "Floating arc-reactor voice overlay for Urfael (Claude Code + Obsidian)",
+  "description": "Urfael — voice overlay, brain daemon, and CLI on Claude Code + Obsidian",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,5 +15,8 @@
     "@picovoice/porcupine-web": "^4.0.0",
     "@picovoice/pvrecorder-node": "^1.2.8",
     "@picovoice/web-voice-processor": "^4.0.10"
+  },
+  "bin": {
+    "urfael": "./cli.js"
   }
 }

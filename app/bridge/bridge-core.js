@@ -89,6 +89,42 @@ async function discordDM(token, userId, text) {
     headers: { Authorization: `Bot ${token}`, 'Content-Type': 'application/json' } }, { content: (text || '(empty)').slice(0, 1900) });
 }
 
+// Download a small file over https to a temp path (voice memos). Capped size, fail-closed.
+function httpsDownload(url, dest, maxBytes = 20 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET', timeout: 60000 }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new Error('download ' + res.statusCode)); return; }
+      let n = 0;
+      const out = fs.createWriteStream(dest);
+      res.on('data', (d) => { n += d.length; if (n > maxBytes) { req.destroy(); out.destroy(); reject(new Error('too large')); } });
+      res.pipe(out);
+      out.on('finish', () => resolve(dest));
+      out.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
+
+// Transcribe an audio file locally: ffmpeg → 16k mono wav → whisper-cli (brew whisper-cpp).
+// Returns '' if the local toolchain isn't installed — callers degrade gracefully.
+function transcribeLocal(audioPath) {
+  const { execFileSync } = require('child_process');
+  const wav = audioPath + '.wav';
+  const tts = (() => { try { return fs.readFileSync(path.join(JDIR, 'tts.env'), 'utf8'); } catch { return ''; } })();
+  const model = path.join(JDIR, 'models', 'ggml-' + ((tts.match(/^WHISPER_MODEL=(.+)$/m) || [])[1] || 'base.en').trim() + '.bin');
+  const whisper = ['/opt/homebrew/bin/whisper-cli', '/usr/local/bin/whisper-cli'].find((p) => { try { fs.accessSync(p); return true; } catch { return false; } });
+  if (!whisper || !fs.existsSync(model)) return '';
+  try {
+    execFileSync('ffmpeg', ['-y', '-i', audioPath, '-ar', '16000', '-ac', '1', wav], { stdio: 'ignore' });
+    const out = execFileSync(whisper, ['-m', model, '-f', wav, '--no-timestamps', '-np'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    return out.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+  } catch { return ''; }
+  finally { try { fs.unlinkSync(wav); } catch {} }
+}
+
 // One-way owner push to whichever channels are configured (single fixed destination each — no recipient param).
 async function notifyAll(text) {
   const cfg = loadEnv();
@@ -96,4 +132,4 @@ async function notifyAll(text) {
   if (cfg.DISCORD_BOT_TOKEN && cfg.DISCORD_OWNER_USER_ID) { try { await discordDM(cfg.DISCORD_BOT_TOKEN, cfg.DISCORD_OWNER_USER_ID, text); } catch {} }
 }
 
-module.exports = { JDIR, SOCK, ENVF, AUDIT, loadEnv, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, notifyAll };
+module.exports = { JDIR, SOCK, ENVF, AUDIT, loadEnv, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, notifyAll, httpsDownload, transcribeLocal };

@@ -189,6 +189,7 @@ async function refreshVitals() {
   if (mEl) { mEl.textContent = modelLabel(v.model) || '—'; mEl.classList.toggle('opus', isOpus(v.model)); }
   set('v-warm', (v.warm || []).length); set('v-lat', v.avgMs ? v.avgMs + 'ms' : '—');
   set('v-turns', v.turnsToday); set('v-mem', v.memCommits);
+  set('v-tok', v.tokToday != null ? (v.tokToday < 1000 ? v.tokToday : Math.round(v.tokToday / 1000) + 'k') : '—');
   set('v-up', v.uptimeS != null ? (v.uptimeS < 3600 ? Math.round(v.uptimeS / 60) + 'm' : Math.round(v.uptimeS / 3600) + 'h') : '—');
 }
 setInterval(() => { if (altitude !== 'idle') refreshVitals(); }, 5000);

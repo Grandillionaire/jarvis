@@ -32,6 +32,27 @@ async function handle(text) {
   core.audit({ ev: 'telegram_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
+// Voice memo → local whisper transcript → normal sandboxed turn. The transcript is echoed back
+// first so you can see what was heard. Degrades with a clear message if whisper-cpp isn't installed.
+async function handleVoice(voice) {
+  const t0 = Date.now();
+  if ((voice.duration || 0) > 300) { await core.telegramSend(TOKEN, OWNER, 'Voice memo too long (5 min max).'); return; }
+  let tmp = '';
+  try {
+    const meta = await core.httpsJson({ hostname: 'api.telegram.org', path: `/bot${TOKEN}/getFile?file_id=${encodeURIComponent(voice.file_id)}`, method: 'GET' });
+    const fp = meta.json && meta.json.result && meta.json.result.file_path;
+    if (!fp) throw new Error('getFile failed');
+    tmp = require('os').tmpdir() + '/uf-voice-' + Date.now() + '.' + (fp.split('.').pop() || 'oga');
+    await core.httpsDownload(`https://api.telegram.org/file/bot${TOKEN}/${fp}`, tmp);
+    const said = core.transcribeLocal(tmp);
+    if (!said) { await core.telegramSend(TOKEN, OWNER, 'Could not transcribe (is whisper-cpp installed on the Mac?).'); return; }
+    core.audit({ ev: 'telegram_voice', secs: voice.duration || 0, chars: said.length, ms: Date.now() - t0 });
+    await core.telegramSend(TOKEN, OWNER, '🎙 ' + said.slice(0, 500));
+    await handle(said);
+  } catch (e) { core.audit({ ev: 'telegram_voice_error', err: String((e && e.message) || e) }); }
+  finally { if (tmp) { try { require('fs').unlinkSync(tmp); } catch {} } }
+}
+
 async function main() {
   if (await notifyMode()) return;
   if (!TOKEN || !OWNER) { console.error('telegram-bridge: set TELEGRAM_BOT_TOKEN and TELEGRAM_OWNER_CHAT_ID in ~/.claude/urfael/bridge.env'); process.exit(1); }
@@ -48,10 +69,12 @@ async function main() {
     for (const u of updates) {
       offset = u.update_id + 1;
       const msg = u.message || u.edited_message;
-      if (!msg || !msg.text) continue;
+      if (!msg) continue;
       if (String(msg.chat.id) !== String(OWNER)) { core.audit({ ev: 'telegram_drop', from: msg.chat.id }); continue; } // ALLOWLIST, before the brain
+      if (!msg.text && !msg.voice && !msg.audio) continue;
       if (!bucket.take()) { core.audit({ ev: 'telegram_ratelimited' }); try { await core.telegramSend(TOKEN, OWNER, 'Rate limited — give me a second.'); } catch {} continue; }
-      handle(msg.text).catch(() => {});
+      if (msg.text) handle(msg.text).catch(() => {});
+      else handleVoice(msg.voice || msg.audio).catch(() => {});
     }
   }
 }
