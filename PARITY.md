@@ -9,7 +9,7 @@
 | Capability | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Desktop app (chat, streaming tool rows, sessions, settings) | menu-bar app | Electron+React | ✓ **Console** (chat, archive, reminders, jobs, hearth, settings) |
-| CLI | `openclaw …` | TUI-first, rich | ✓ `urfael` (ask/status/jobs/reminders/sessions/stop/dashboard; Ctrl+C abort); no full-screen TUI |
+| CLI | `openclaw …` | TUI-first, rich | ✦ `urfael` CLI **and** `urfael tui` full-screen ANSI cockpit (streamed transcript + tool rows, Esc-abort, terminal-safe) |
 | Voice (wake word, PTT, barge-in, local STT/TTS) | wake word, talk mode | CLI PTT, voice memos | ✦ orb (opt-in) + Console PTT + spoken remarks, all local |
 | Web dashboard | ✓ | ✓ | ✦ token-gated localhost dashboard (127.0.0.1-only, constant-time token, no path serving — hardened past both) |
 | Mobile nodes / canvas | iOS/Android, A2UI canvas | ✗ | ✗ — non-goal for now (phone via bridges) |
@@ -18,16 +18,16 @@
 ## Channels
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
-| Count | 24+ | ~21 adapters | 4 (Telegram, Discord, Slack, iMessage) + notify push |
+| Count | 24+ | ~21 adapters | 5 (Telegram, Discord, Slack, iMessage, Email) + notify push |
 | Voice memos | ✓ | ✓ | ✓ (local whisper, never cloud) |
 | Pairing/allowlist security | pairing codes | pairing codes | ✦ owner-allowlist + structural sandbox (read-only, no egress) |
-| Next | — | — | ➜ Email; (Slack socket-mode + iMessage chat.db now shipped) |
+| Next | — | — | (Telegram/Discord/Slack/iMessage/Email all shipped; owner-allowlisted + auto-sandboxed) |
 
 ## Memory & recall
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Curated memory file(s) | MEMORY.md + daily notes | MEMORY.md (2.2k cap) + USER.md | ✦ MEMORY/USER/LESSONS/WORKFLOW, no hard cap, git-versioned |
-| Session search | memory_search (vector+kw) | FTS5 SQLite | ✓ JSONL archive + grep (brain + CLI + Console search) |
+| Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ BM25 ranked recall (daemon /recall) across brain + CLI + Console + dashboard; plain-text, no index to corrupt |
 | Consolidation | "dreaming" pass | post-turn background review | ✓ end-of-conversation distill (cheaper; per-turn review planned as opt-in) |
 | User modeling | — | Honcho dialectic | ◐ USER.md auto-curated (no per-turn dialectic) |
 
@@ -79,9 +79,11 @@ DONE (workflow 1+2, adversarially reviewed): abort/stop everywhere · ⌘K comma
 native menu bar + dock badge · Slack + iMessage bridges · Docker-isolated goal-loop ·
 token-gated localhost dashboard · skill curator (URFAEL_CURATOR_DAYS) · per-turn review (URFAEL_REVIEW).
 
-NEXT:
-1. Email bridge (IMAP idle + draft-only send), same sandbox profile
-2. Full-screen TUI mode for the CLI (Hermes parity on the terminal)
-3. Usage/cost dashboard panel + per-skill usage counts feeding the curator
-4. Opt-in vector recall over the session archive (currently grep; fine at personal scale)
-5. Menu-bar tray icon (quick toggle, status) as a third lightweight surface
+SHIPPED since (workflow 3, adversarially reviewed): Email bridge (IMAP IDLE, draft-only) ·
+`urfael tui` full-screen cockpit · BM25 ranked recall (daemon /recall) · macOS menu-bar tray.
+
+NEXT (smaller polish, optional):
+1. Usage/cost dashboard panel + per-skill usage counts feeding the curator
+2. Multipart/quoted-printable decode in the email bridge (currently plain-text heuristic)
+3. Linux/Windows ports (tray, voice backends)
+4. Embedding-based recall as an opt-in upgrade over BM25 (only if it earns its keep)
