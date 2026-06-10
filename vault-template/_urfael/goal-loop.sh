@@ -129,8 +129,10 @@ START=$(date +%s); cd "$REPO" || exit 1; prev=""; stale=0; errs=0; sid=""; DONE=
 parse_field(){ printf '%s' "$1" | python3 -c "import sys,json
 try: print(json.load(sys.stdin).get('$2',''))
 except Exception: print('')"; }
-# Run the --check verify command where the WORK lands: on the remote tree in ssh mode (escaped as one arg), else locally.
-run_check(){ if [ "$SANDBOX" = ssh ]; then "${SSH_PREFIX[@]}" "cd ${SSH_DIR_Q:-.} && $(printf '%q' "$CHECK")" >>"$LOG" 2>&1; else bash -c "$CHECK" >>"$LOG" 2>&1; fi; }
+# Run the --check verify command where the WORK lands: on the remote tree in ssh mode, else locally. The check is
+# piped to a remote `bash -s` over STDIN (NOT spliced into the ssh command line and NOT %q-mangled), so a normal
+# multi-word command like "npm test && ./verify.sh" runs intact and the goal text never reaches the remote shell.
+run_check(){ if [ "$SANDBOX" = ssh ]; then printf '%s\n' "$CHECK" | "${SSH_PREFIX[@]}" "cd ${SSH_DIR_Q:-.} && bash -s" >>"$LOG" 2>&1; else bash -c "$CHECK" >>"$LOG" 2>&1; fi; }
 
 # Pre-flight: if a verify command is given and already passes, the goal's done — don't burn a turn.
 if [ -n "$CHECK" ] && run_check; then echo "✅ goal already satisfied (verify passes)."; exit 0; fi
@@ -148,7 +150,10 @@ Make concrete, committed progress this turn. When the goal is fully achieved and
   # shell can't re-interpret them. Anything injected into the goal text stays inert data on stdin.
   if [ "$SANDBOX" = "ssh" ]; then
     RFLAGS=""; for f in "${FLAGS[@]}"; do RFLAGS+=" $(printf '%q' "$f")"; done
-    out=$(printf '%s' "$PROMPT" | "$TIMEOUT_BIN" -k 10 "$TURN_TIMEOUT" "${SSH_PREFIX[@]}" "cd ${SSH_DIR_Q:-.} && claude -p${RFLAGS}" 2>>"$LOG"); rc=$?
+    # The LOCAL timeout SIGKILLs the ssh client on a hang, but ssh won't forward that to the remote, so claude
+    # could keep running on the host. Bound it REMOTELY too: `timeout` on the remote (if present) self-kills the
+    # remote claude; the local timeout (slightly longer) is the backstop. So a hung turn never leaves an orphan.
+    out=$(printf '%s' "$PROMPT" | "$TIMEOUT_BIN" -k 10 "$((TURN_TIMEOUT + 30))" "${SSH_PREFIX[@]}" "cd ${SSH_DIR_Q:-.} && (command -v timeout >/dev/null && timeout -k 10 ${TURN_TIMEOUT} claude -p${RFLAGS} || claude -p${RFLAGS})" 2>>"$LOG"); rc=$?
   else
     if [ -n "$SANDBOX" ]; then TURN_CMD=("${DOCKER_PREFIX[@]}" claude); else TURN_CMD=("$CLAUDE_BIN"); fi
     out=$("$TIMEOUT_BIN" -k 10 "$TURN_TIMEOUT" "${TURN_CMD[@]}" -p "$PROMPT" "${FLAGS[@]}" 2>>"$LOG"); rc=$?

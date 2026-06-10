@@ -67,7 +67,9 @@ function receiveOnce() {
       let i;
       while ((i = buf.indexOf('\n')) >= 0) { const ln = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (ln) onLine(ln); }
     });
-    child.stderr.on('data', (d) => core.audit({ ev: 'signal_stderr', msg: String(d).slice(0, 300) }));
+    // audit only that stderr happened + its size — signal-cli emits account/identity diagnostics here that we
+    // don't want persisted verbatim into the audit log.
+    child.stderr.on('data', (d) => core.audit({ ev: 'signal_stderr', bytes: d.length }));
     child.on('error', (err) => { core.audit({ ev: 'signal_spawn_error', err: String((err && err.message) || err) }); resolve(); });
     child.on('close', (code) => { if (buf.trim()) onLine(buf.trim()); core.audit({ ev: 'signal_receive_exit', code }); resolve(); });
   });

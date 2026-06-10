@@ -258,8 +258,10 @@ function parseFetch(lines) {
   const inReplyTo = hdr(/^Message-ID:\s*(.+)$/im); // the incoming Message-ID becomes our In-Reply-To
   let body = '';
   if (bi >= 0) body = text.slice(bi + 4);
-  // Strip the IMAP FETCH framing that wraps the body part(s) before MIME-decoding the real payload.
-  body = body.replace(/^.*BODY\[TEXT\][^\r\n]*\r?\n/i, '').replace(/^\)\s*$/m, '').replace(/^.*\bFETCH\b.*$/im, '').replace(/\)\s*$/, '').trim();
+  // Strip the IMAP FETCH framing that wraps the body part(s) before MIME-decoding the real payload. Anchor the
+  // untagged-response strip to the actual '* <n> FETCH …' protocol line — NOT any body line containing the word
+  // 'FETCH' (the old /\bFETCH\b/im deleted legitimate body lines that merely mention it).
+  body = body.replace(/^.*BODY\[TEXT\][^\r\n]*\r?\n/i, '').replace(/^\)\s*$/m, '').replace(/^\* \d+ FETCH\b.*$/im, '').replace(/\)\s*$/, '').trim();
   // Decode quoted-printable / base64 / multipart using the isolated HEADER block (NOT the body) for Content-Type/CTE.
   body = decodeBody(head, body);
   return { from, subject, body: body.slice(0, BODY_CAP), inReplyTo };
@@ -321,23 +323,23 @@ async function saveDraft(imap, to, subject, body, inReplyTo) {
 // One pass: find UNSEEN uids, and for each allowlisted one relay + draft. Returns nothing; logs via audit.
 async function drain(imap) {
   const uids = parseSearch(await imap.cmd('UID SEARCH UNSEEN'));
+  const seen = (uid) => { processed.add(uid); if (processed.size > 5000) processed.clear(); }; // bound; reconnect re-derives
   for (const uid of uids) {
-    if (processed.has(uid)) continue;       // fetch each UNSEEN uid at most once per session (no re-parsing hostile mail every poll)
-    processed.add(uid);
-    if (processed.size > 5000) processed.clear(); // bound the set; a reconnect re-derives state anyway
+    if (processed.has(uid)) continue;       // a terminal decision was already made for this uid this session
     let mail;
-    try { mail = await fetchMail(imap, uid); } catch (e) { core.audit({ ev: 'email_fetch_error', uid, err: String((e && e.message) || e) }); continue; }
+    try { mail = await fetchMail(imap, uid); } catch (e) { core.audit({ ev: 'email_fetch_error', uid, err: String((e && e.message) || e) }); seen(uid); continue; }
     const sender = addrOf(mail.from);
-    // ALLOWLIST, BEFORE the brain. Not allowed => skip, audit, and DO NOT mark seen (we never touched it).
-    if (!ALLOWED.has(sender)) { core.audit({ ev: 'email_drop', from: sender }); continue; }
-    if (!bucket.take()) { core.audit({ ev: 'email_ratelimited', from: sender }); continue; } // leave UNSEEN; retried next pass
+    // ALLOWLIST, BEFORE the brain. Not allowed => drop, audit, mark processed (fetch hostile mail ONCE, never again).
+    if (!ALLOWED.has(sender)) { core.audit({ ev: 'email_drop', from: sender }); seen(uid); continue; }
+    // Rate-limited: do NOT mark processed — it's the OWNER's own mail; leave it to retry once the bucket refills.
+    if (!bucket.take()) { core.audit({ ev: 'email_ratelimited', from: sender }); continue; }
     const t0 = Date.now();
     try {
       const reply = core.stripSpoken(await core.askDaemon('Subject: ' + mail.subject + '\n\n' + mail.body, 'email'));
       await saveDraft(imap, sender, mail.subject, reply, mail.inReplyTo);
-      await markSeen(imap, uid); // only after a draft is safely stored
+      await markSeen(imap, uid); seen(uid); // only after a draft is safely stored
       core.audit({ ev: 'email_turn', from: sender, inLen: mail.body.length, outLen: reply.length, ms: Date.now() - t0 });
-    } catch (e) { core.audit({ ev: 'email_turn_error', from: sender, err: String((e && e.message) || e) }); }
+    } catch (e) { core.audit({ ev: 'email_turn_error', from: sender, err: String((e && e.message) || e) }); } // a failed turn stays UNSEEN+unprocessed → retried
   }
 }
 

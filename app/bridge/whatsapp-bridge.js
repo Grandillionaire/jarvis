@@ -90,8 +90,10 @@ function onVerify(req, res) {
 function onPost(req, res) {
   const chunks = [];
   let n = 0;
-  req.on('data', (d) => { n += d.length; if (n > 1024 * 1024) { req.destroy(); return; } chunks.push(d); }); // cap body at 1MB
+  let over = false;
+  req.on('data', (d) => { if (over) return; n += d.length; if (n > 1024 * 1024) { over = true; try { res.writeHead(413); res.end(); } catch {} req.destroy(); return; } chunks.push(d); }); // cap body at 1MB, but ANSWER (413) so Meta doesn't retry-storm
   req.on('end', () => {
+    if (over) return;                                    // already answered 413 + destroyed; don't process a truncated body
     const raw = Buffer.concat(chunks);
     // VERIFY THE HMAC FIRST, over the raw bytes, before we parse anything attacker-controlled.
     if (!verifySig(raw, req.headers['x-hub-signature-256'])) {

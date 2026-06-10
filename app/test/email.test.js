@@ -127,3 +127,20 @@ test('email: plain text with no CTE passes through unchanged', () => {
   assert.equal(decodeBody('Content-Type: text/plain', 'just a normal line'), 'just a normal line');
   assert.equal(decodeBody('', 'no headers at all'), 'no headers at all');
 });
+
+// ---- second-review regressions ----
+test('email: a body line containing "FETCH" is NOT stripped as IMAP framing', () => {
+  const lines = ['* 1 FETCH (BODY[HEADER.FIELDS (FROM SUBJECT)] {30}', 'From: max@allowed.com', 'Subject: r', '',
+    ' BODY[TEXT] {40}', 'Please FETCH the Q2 report and summarize.', ')'];
+  const r = parseFetch(lines);
+  assert.equal(addrOf(r.from), 'max@allowed.com');
+  assert.match(r.body, /FETCH the Q2 report/);   // the old /\bFETCH\b/im deleted this legit line
+});
+
+test('email: multipart boundary that is a prefix of body text does not mis-split', () => {
+  // boundary "X"; the text/plain part legitimately contains "--Xtra" which must NOT be treated as a boundary
+  const headers = 'Content-Type: multipart/alternative; boundary="X"';
+  const raw = '--X\r\nContent-Type: text/plain\r\n\r\nkeep this --Xtra text intact\r\n--X--\r\n';
+  const out = decodeBody(headers, raw);
+  assert.match(out, /keep this --Xtra text intact/);
+});

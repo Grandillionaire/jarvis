@@ -126,11 +126,23 @@ function scan(text) {
 
 // Fetch a single .md over https (no redirects to other hosts blindly; capped). Resolves
 // { contentType, body } or rejects. Refuses non-https and oversize bodies fail-closed.
+// SSRF guard: refuse loopback / link-local / private (RFC1918, CGNAT, ULA) hosts so a redirect can't aim the
+// fetch at 127.0.0.1, 169.254.169.254 (cloud metadata), or an internal box.
+function isPrivateHost(h) {
+  h = String(h || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) { const [a, b] = [+m[1], +m[2]];
+    return a === 127 || a === 10 || a === 0 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127); }
+  if (/^(::1|fe80:|fc|fd)/.test(h)) return true; // IPv6 loopback / link-local / ULA
+  return false;
+}
 function fetchMd(url, depth = 0) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch { return reject(new Error('invalid url')); }
     if (u.protocol !== 'https:') return reject(new Error('refusing non-https url (got ' + u.protocol + ')'));
+    if (isPrivateHost(u.hostname)) return reject(new Error('refusing private/loopback host (SSRF): ' + u.hostname));
     if (depth > 3) return reject(new Error('too many redirects'));
     const req = https.request({ hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET', timeout: 30000, headers: { 'User-Agent': 'urfael-skillhub', Accept: 'text/markdown, text/plain' } }, (res) => {
       const code = res.statusCode || 0;
@@ -174,22 +186,28 @@ async function installFromUrl(url, opts = {}) {
   const dest = path.join(SKILLS_DIR, slug + '.md');
   // belt-and-suspenders: the resolved path MUST live directly inside SKILLS_DIR — never escape it
   if (path.dirname(path.resolve(dest)) !== path.resolve(SKILLS_DIR)) { console.error('✗ refusing to write outside the skills dir'); return { ok: false, error: 'path escape' }; }
+  const overwrite = fs.existsSync(dest); // a slug collision could overwrite an existing TRUSTED skill — flag it loudly, never under --yes
 
   const { flags } = scan(body);
 
   // ALWAYS show the full content the human is being asked to trust, then the scan verdict.
+  // The body is UNTRUSTED: strip terminal control/ANSI escapes so it can't spoof the display (hide the verdict,
+  // move the cursor, recolor text) — what you see is the literal bytes that would be stored.
+  const safeBody = String(body).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b[@-_]/g, '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
   process.stdout.write(gold('── skill: ' + (m.name || slug)) + dim('  (' + slug + '.md)') + '\n');
-  if (m.desc) process.stdout.write(dim('   ' + m.desc) + '\n');
+  if (m.desc) process.stdout.write(dim('   ' + String(m.desc).replace(/\x1b/g, '')) + '\n');
   process.stdout.write(dim('─'.repeat(60)) + '\n');
-  process.stdout.write(body.endsWith('\n') ? body : body + '\n');
+  process.stdout.write(safeBody.endsWith('\n') ? safeBody : safeBody + '\n');
   process.stdout.write(dim('─'.repeat(60)) + '\n');
   reportFlags(flags);
 
   const danger = flags.some((f) => f.level === 'danger');
   if (opts.yes) {
     if (danger) { console.error('✗ refusing --yes auto-install: this skill tripped DANGER flags. Review and install interactively.'); return { ok: false, error: 'danger flags block --yes', flags }; }
+    if (overwrite) { console.error('✗ refusing --yes: a skill named ' + slug + '.md already exists. Overwriting an installed skill needs interactive confirmation.'); return { ok: false, error: 'would overwrite', flags }; }
   } else {
-    const ok = await (opts.confirm || promptYesNo)('Install this skill to ' + dest + '?' + (danger ? gold(' (DANGER flags present!)') : ''));
+    const warn = (danger ? gold(' (DANGER flags present!)') : '') + (overwrite ? gold(' (OVERWRITES the existing ' + slug + '.md!)') : '');
+    const ok = await (opts.confirm || promptYesNo)('Install this skill to ' + dest + '?' + warn);
     if (!ok) { console.log(dim('aborted — nothing written')); return { ok: false, error: 'declined', flags }; }
   }
 

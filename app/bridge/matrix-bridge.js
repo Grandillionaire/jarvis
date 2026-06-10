@@ -50,7 +50,10 @@ function drain(sync) {
       if (e.type !== 'm.room.message') continue;
       if (String(e.sender) !== String(OWNER)) { core.audit({ ev: 'matrix_drop', from: e.sender }); continue; } // ALLOWLIST, before the brain
       const c = e.content || {};
-      if (c.msgtype !== 'm.text' || !c.body) continue;     // text only — ignore media/notice/edits
+      if (c.msgtype !== 'm.text' || !c.body) continue;     // text only — ignore media/notice
+      const rel = c['m.relates_to'] || {};
+      if (rel.rel_type === 'm.replace' || c['m.new_content']) continue; // skip EDITS — they re-arrive as m.text and would re-run a past command
+      if (typeof c.body === 'string' && c.body.startsWith(' * ')) continue; // edit fallback body
       if (!bucket.take()) { core.audit({ ev: 'matrix_ratelimited' }); send(roomId, 'Rate limited — one sec.').catch(() => {}); continue; }
       handle(roomId, c.body).catch(() => {});
     }
