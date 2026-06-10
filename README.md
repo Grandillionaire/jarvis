@@ -115,6 +115,18 @@ brew install ffmpeg whisper-cpp coreutils       # macOS
 
 The brain uses Claude Code's model **aliases** (`sonnet` for most turns, escalating to `opus` for code & deep reasoning), so it always tracks the latest models your plan supports. Opus needs **Max**; on **Pro**, set `URFAEL_OPUS_MODEL=sonnet`. Full setup — voice tiers, connectors, bridges, Linux — is in [docs/SETUP.md](docs/SETUP.md).
 
+> [!NOTE]
+> **Fair use & your Claude login.** Urfael runs entirely on *your own* `claude` login — it bundles no credentials, stores no tokens, and pools nothing across users. It's an open-source tool for ordinary, individual use. If you want to run it as a shared service or at production scale, use an Anthropic **API key** instead of a subscription. See [SECURITY.md](SECURITY.md) and Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup) and [Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
+
+### Using other models
+
+Urfael drives the `claude` CLI and inherits your environment, so any backend Claude Code itself supports works through it — no Urfael code:
+
+- **Claude on Amazon Bedrock / Google Vertex** — set `CLAUDE_CODE_USE_BEDROCK=1` (with `AWS_REGION` + creds) or `CLAUDE_CODE_USE_VERTEX=1`. Billed to your AWS/GCP.
+- **A custom gateway or any model via a proxy** — point `ANTHROPIC_BASE_URL` at a translating proxy ([claude-code-router](https://github.com/musistudio/claude-code-router), [LiteLLM](https://docs.litellm.ai/), or y-router) to reach GPT/Gemini/DeepSeek/Ollama/LM Studio. Claude Code speaks the Anthropic Messages API, so the proxy presents that shape and converts.
+
+One asymmetry to know: **non-Anthropic models run on your own provider keys — the Claude subscription only covers Anthropic models.** And if `ANTHROPIC_API_KEY` is in your environment it overrides the subscription. (Native, non-CLI provider support isn't a goal — it would mean abandoning the `claude`-CLI harness that keeps Urfael fast, free on your plan, and on the right side of Anthropic's terms.)
+
 ### Quick start
 
 ```bash
