@@ -130,11 +130,124 @@ function parseSearch(lines) {
   return out;
 }
 
+// --- MIME decoding (pure JS, no deps) ----------------------------------------------------------------------
+// Inbound mail is rarely plain text on the wire: it is quoted-printable / base64 / multipart. We decode it to
+// clean text so the brain reads what a human reads, not raw transfer framing. ALL of this is best-effort and
+// MUST NEVER throw — a garbled MIME structure falls back to the raw text. None of this touches the allowlist:
+// the From decision still rides ONLY on the isolated header block (see parseFetch), never on decoded body bytes.
+const BODY_CAP = 8000;
+
+// Read one header value out of a header block (folded continuation lines unwrapped). '' if absent.
+function headerVal(headerBlock, name) {
+  const m = String(headerBlock || '').match(new RegExp('^' + name + ':\\s*(.+(?:\\r?\\n[ \\t]+.+)*)', 'im'));
+  return m ? m[1].replace(/\r?\n[ \t]+/g, ' ').trim() : '';
+}
+
+// Pull a parameter (e.g. boundary, charset) out of a structured header value like 'text/plain; charset="utf-8"'.
+function paramOf(headerValue, name) {
+  const m = String(headerValue || '').match(new RegExp(name + '\\s*=\\s*"([^"]*)"|' + name + '\\s*=\\s*([^;\\s]+)', 'i'));
+  return m ? (m[1] !== undefined ? m[1] : m[2]) : '';
+}
+
+// Decode quoted-printable: =XX hex octets and soft line breaks (a trailing '=' before CRLF joins the lines).
+// Bytes are reassembled then UTF-8 decoded so multi-byte chars split across =XX=XX survive (=E2=80=99 -> ').
+function decodeQP(s) {
+  const src = String(s).replace(/=\r?\n/g, '');           // soft breaks: drop '=' + the newline
+  const out = [];
+  for (let i = 0; i < src.length; i++) {
+    if (src[i] === '=' && /[0-9A-Fa-f]{2}/.test(src.substr(i + 1, 2))) { out.push(parseInt(src.substr(i + 1, 2), 16)); i += 2; }
+    else out.push(src.charCodeAt(i) & 0xff);
+  }
+  return Buffer.from(out);
+}
+
+// Decode a transfer-encoded part body to a Buffer per its CTE. Unknown/7bit/8bit/binary => raw bytes.
+function decodeCTE(cte, raw) {
+  const e = String(cte || '').trim().toLowerCase();
+  try {
+    if (e === 'base64') return Buffer.from(String(raw).replace(/\s+/g, ''), 'base64');
+    if (e === 'quoted-printable') return decodeQP(raw);
+  } catch {}
+  return Buffer.from(String(raw), 'latin1');
+}
+
+// Latin-1-safe Buffer -> string honoring a charset where Node supports it trivially (utf-8 default).
+function bufToText(buf, charset) {
+  const cs = String(charset || 'utf-8').trim().toLowerCase();
+  try {
+    if (cs === 'us-ascii' || cs === 'ascii' || cs === 'iso-8859-1' || cs === 'latin1') return buf.toString('latin1');
+    return buf.toString('utf8'); // utf-8 and unknown: best-effort utf8
+  } catch { return buf.toString('latin1'); }
+}
+
+// Crude HTML -> text: drop script/style, tags to spaces, decode a handful of entities, collapse whitespace.
+function htmlToText(s) {
+  return String(s)
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>(?=)/gi, '\n').replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+// Decode a single non-multipart entity (its own MIME headers + raw body) to clean, charset-aware text.
+function decodePart(partHeaders, rawPartBody) {
+  const ct = headerVal(partHeaders, 'Content-Type');
+  const cte = headerVal(partHeaders, 'Content-Transfer-Encoding');
+  const buf = decodeCTE(cte, rawPartBody);
+  const text = bufToText(buf, paramOf(ct, 'charset'));
+  return /text\/html/i.test(ct) ? htmlToText(text) : text;
+}
+
+// Split a multipart body on its boundary into parts, each as { headers, body } (the part's MIME headers split
+// from its body at the first blank line). Boundary lines are '--boundary'; the closing one is '--boundary--'.
+function splitMultipart(rawBody, boundary) {
+  const parts = [];
+  const delim = '--' + boundary;
+  // RFC 2046: a boundary is delimited by a line — it must be followed by CRLF (a part) or '--' (the close).
+  // The trailing lookahead stops a boundary that is a PREFIX of real body text ('--Xtra') from mis-splitting it.
+  const segs = String(rawBody).split(new RegExp('\\r?\\n?' + delim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=\\r?\\n|--|$)'));
+  for (const seg of segs) {
+    if (!seg || /^--/.test(seg.trim())) continue;          // preamble/empty or the closing '--' marker
+    const body = seg.replace(/^\r?\n/, '');
+    const bi = body.search(/\r?\n\r?\n/);
+    if (bi < 0) { parts.push({ headers: '', body }); continue; }
+    parts.push({ headers: body.slice(0, bi), body: body.slice(bi).replace(/^\r?\n\r?\n/, '') });
+  }
+  return parts;
+}
+
+// Decode a message body to clean text using its top-level headers. Picks the FIRST text/plain part of a
+// multipart (else the first text/html, stripped). Best-effort and NEVER throws; falls back to the raw body.
+function decodeBody(headers, rawBody) {
+  const raw = String(rawBody == null ? '' : rawBody);
+  try {
+    const ct = headerVal(headers, 'Content-Type');
+    if (/^multipart\//i.test(ct)) {
+      const boundary = paramOf(ct, 'boundary');
+      if (boundary) {
+        const parts = splitMultipart(raw, boundary);
+        let html = '';
+        for (const p of parts) {
+          const pct = headerVal(p.headers, 'Content-Type') || 'text/plain';
+          // Nested multipart (e.g. multipart/alternative inside multipart/mixed): recurse into it.
+          if (/^multipart\//i.test(pct)) { const inner = decodeBody(p.headers, p.body); if (inner) return inner.slice(0, BODY_CAP); continue; }
+          if (/text\/plain/i.test(pct)) return decodePart(p.headers, p.body).slice(0, BODY_CAP);
+          if (!html && /text\/html/i.test(pct)) html = decodePart(p.headers, p.body);
+        }
+        if (html) return html.slice(0, BODY_CAP);
+      }
+      return raw.slice(0, BODY_CAP); // garbled multipart: raw fallback
+    }
+    return decodePart(headers, raw).slice(0, BODY_CAP);
+  } catch { return raw.slice(0, BODY_CAP); }
+}
+
 // Pure parse of stitched FETCH lines -> { from, subject, body, inReplyTo }. Extracted so the allowlist-critical
 // header parsing is unit-testable without a live server.
 // SECURITY: the allowlist decision rides on From, so headers are matched ONLY against the header block (up to the
 // first blank line) — NEVER the attacker-controlled body. Otherwise a body line `From: owner@allowed.com` would
-// forge an allowed sender and bypass the owner allowlist.
+// forge an allowed sender and bypass the owner allowlist. decodeBody touches ONLY the body, never the From read.
 function parseFetch(lines) {
   const text = lines.join('\r\n');
   const bi = text.indexOf('\r\n\r\n');
@@ -145,15 +258,20 @@ function parseFetch(lines) {
   const inReplyTo = hdr(/^Message-ID:\s*(.+)$/im); // the incoming Message-ID becomes our In-Reply-To
   let body = '';
   if (bi >= 0) body = text.slice(bi + 4);
-  body = body.replace(/^\)\s*$/m, '').replace(/^.*\bFETCH\b.*$/im, '').replace(/\)\s*$/, '').trim();
-  return { from, subject, body: body.slice(0, 8000), inReplyTo };
+  // Strip the IMAP FETCH framing that wraps the body part(s) before MIME-decoding the real payload.
+  body = body.replace(/^.*BODY\[TEXT\][^\r\n]*\r?\n/i, '').replace(/^\)\s*$/m, '').replace(/^.*\bFETCH\b.*$/im, '').replace(/\)\s*$/, '').trim();
+  // Decode quoted-printable / base64 / multipart using the isolated HEADER block (NOT the body) for Content-Type/CTE.
+  body = decodeBody(head, body);
+  return { from, subject, body: body.slice(0, BODY_CAP), inReplyTo };
 }
 
 // FETCH one uid's From/Subject headers + a text body part. Returns { from, subject, body } as plain strings.
 async function fetchMail(imap, uid) {
   // BODY.PEEK[...] does NOT set \Seen — we decide seen-state explicitly, and never mark dropped mail.
+  // Pull the MIME framing headers (Content-Type/Content-Transfer-Encoding) alongside the allowlist headers so
+  // decodeBody can decode quoted-printable / base64 / multipart from the SAME isolated header block.
   const lines = await imap.cmd('UID FETCH ' + uid
-    + ' (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT IN-REPLY-TO MESSAGE-ID)] BODY.PEEK[TEXT])');
+    + ' (BODY.PEEK[HEADER.FIELDS (FROM SUBJECT IN-REPLY-TO MESSAGE-ID CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT])');
   return parseFetch(lines);
 }
 
@@ -269,5 +387,5 @@ async function main() {
   }
 }
 
-module.exports = { Imap, parseFetch, addrOf, parseSearch }; // pure pieces, for tests
+module.exports = { Imap, parseFetch, addrOf, parseSearch, decodeBody }; // pure pieces, for tests
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

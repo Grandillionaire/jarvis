@@ -8,6 +8,10 @@
 //   urfael reminders                           list reminders
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
+//   urfael skills list                         your installed skills (name + description)
+//   urfael skills export <name>                print a skill to stdout to share it
+//   urfael skills scan <file>                  static safety-scan a skill .md before trusting it
+//   urfael skills install <https-url> [--yes]  fetch a skill .md, scan it, show it, install on confirm (never executes it)
 //   urfael tui                                 full-screen terminal cockpit (streams turns, scrollback, status bar)
 //   urfael dashboard                           open the token-gated localhost web console (prints the URL)
 //   urfael stop                                abort the current in-flight turn (also: Ctrl+C while asking)
@@ -96,6 +100,33 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
   if (!cmd || cmd === 'help' || cmd === '--help') { console.log(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n')); return; }
 
   if (cmd === 'sessions') { if (rest[0] === 'search' && rest[1]) searchSessions(rest.slice(1).join(' ')); else console.log('usage: urfael sessions search <query>'); return; }
+
+  // skills: a paranoid share/install hub for VAULT/_urfael/skills/. Pure CLI — no brain needed, runs
+  // BEFORE ensureDaemon. Install never executes a skill; it only stores the markdown after you confirm.
+  if (cmd === 'skills') {
+    const hub = require('./skillhub');
+    const sub = rest[0];
+    if (sub === 'list') {
+      const skills = hub.listLocal();
+      if (!skills.length) { console.log(dim('no skills installed yet')); return; }
+      for (const s of skills) console.log(gold(s.slug) + (s.desc ? '  ' + dim(s.desc) : ''));
+      return;
+    }
+    if (sub === 'export' && rest[1]) { if (!hub.exportSkill(rest[1])) { console.error('✗ no such skill: ' + rest[1]); process.exit(1); } return; }
+    if (sub === 'scan' && rest[1]) {
+      let text = ''; try { text = fs.readFileSync(rest[1], 'utf8'); } catch (e) { console.error('✗ cannot read ' + rest[1] + ': ' + (e && e.message || e)); process.exit(1); }
+      const { flags } = hub.scan(text);
+      if (!flags.length) { console.log(gold('✓ scan clean') + dim(' — no dangerous patterns found (still your call)')); return; }
+      const dangers = flags.filter((f) => f.level === 'danger').length;
+      console.log((dangers ? gold('⚠ ' + dangers + ' DANGER') + dim(' + ' + (flags.length - dangers) + ' warn') : gold('⚠ ' + flags.length + ' warning')) + dim(' flag(s):'));
+      for (const f of flags) console.log('  ' + (f.level === 'danger' ? gold('[DANGER]') : dim('[warn]  ')) + ' ' + f.why + (f.sample ? dim('  «' + f.sample + '»') : ''));
+      if (dangers) process.exit(1); // non-zero exit so scripts/pipelines can gate on a dirty scan
+      return;
+    }
+    if (sub === 'install' && rest[1]) { const r = await hub.installFromUrl(rest[1], { yes: rest.includes('--yes') }); if (!r.ok) process.exit(1); return; }
+    console.log('usage: urfael skills list | export <name> | scan <file> | install <https-url> [--yes]');
+    return;
+  }
 
   // stop is best-effort BEFORE ensureDaemon — never spawn a brain just to abort nothing
   if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }

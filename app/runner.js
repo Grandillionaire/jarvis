@@ -31,6 +31,18 @@ function argvFor(job) {
     if (s.model) args.push('--model', String(s.model));
     // Optional throwaway-container isolation. Whitelist server-side; goal-loop.sh re-validates + needs docker.
     if (s.sandbox === 'docker' || s.sandbox === 'docker-net') args.push('--sandbox', s.sandbox);
+    // Optional remote SSH backend: turns run on a remote host. Validate the host server-side against the SAME safe
+    // pattern goal-loop.sh enforces ([A-Za-z0-9._@-]+, no leading '-') — a bad/missing host is DROPPED, not passed,
+    // so we never splice an attacker-shaped string onto an ssh command line. --ssh-dir is a path, passed verbatim
+    // (goal-loop.sh %q-escapes it). Only enable ssh mode when the host validates.
+    else if (s.sandbox === 'ssh') {
+      const host = String(s.sshHost || '');
+      if (/^[A-Za-z0-9._@-]+$/.test(host) && host[0] !== '-') {
+        args.push('--sandbox', 'ssh', '--ssh-host', host);
+        if (s.sshDir) args.push('--ssh-dir', String(s.sshDir));
+      }
+      // else: host invalid/missing -> drop ssh entirely; the loop runs on the host (default), never with a bad host.
+    }
     return args;
   }
   // ask / research: sandboxed one-shot — no bypass, no computer-use, write a result note into the vault.

@@ -254,13 +254,36 @@ function tailLines(file, maxBytes = 65536) { // read only the log tail — never
   } catch { return []; }
 }
 let memCommitCache = { t: 0, n: 0 }; // vitals is polled every 5s by the HUD — don't fork git that often
+
+// ---- usage cost ESTIMATE (never authoritative pricing) -------------------------------------------
+// Cost is computed from the existing per-turn {tokIn,tokOut,tokCache,model} log lines using
+// per-million-token rates. The DEFAULTS below are documented public list prices at time of writing
+// (USD / 1M tokens) and are OVERRIDABLE via env — they are an ESTIMATE, not a billed figure. Cache
+// reads bill at ~0.1x the input rate. A turn's model string is matched loosely ('opus' substring ->
+// opus tier, else sonnet) so it works whether the log stored an alias ('opus'/'sonnet') or a pinned id.
+//   Defaults: Sonnet $3 in / $15 out, Opus $5 in / $25 out per 1M tokens.
+//   Override: URFAEL_PRICE_SONNET_IN / _SONNET_OUT / _OPUS_IN / _OPUS_OUT.
+function priceRates() {
+  const num = (k, d) => { const v = parseFloat(process.env[k]); return Number.isFinite(v) && v >= 0 ? v : d; };
+  return {
+    sonnet: { in: num('URFAEL_PRICE_SONNET_IN', 3), out: num('URFAEL_PRICE_SONNET_OUT', 15) },
+    opus: { in: num('URFAEL_PRICE_OPUS_IN', 5), out: num('URFAEL_PRICE_OPUS_OUT', 25) },
+  };
+}
+function turnCost(e, rates) { // USD est. for one {ev:'turn'} line; cache reads bill at ~0.1x input
+  const tier = /opus/i.test(String(e.model || '')) ? rates.opus : rates.sonnet;
+  const tin = e.tokIn || 0, tout = e.tokOut || 0, tcache = e.tokCache || 0;
+  return (tin * tier.in + tcache * tier.in * 0.1 + tout * tier.out) / 1e6;
+}
+
 function vitals() {
   const today = new Date().toISOString().slice(0, 10);
-  let turnsToday = 0, errors = 0, lat = [], tokToday = 0;
+  const rates = priceRates();
+  let turnsToday = 0, errors = 0, lat = [], tokToday = 0, costToday = 0;
   for (const ln of tailLines(LOGFILE).slice(-500)) {
     let e; try { e = JSON.parse(ln); } catch { continue; }
     const day = (e.t || '').slice(0, 10);
-    if (e.ev === 'turn' && day === today) { turnsToday++; if (e.ms) lat.push(e.ms); tokToday += (e.tokIn || 0) + (e.tokOut || 0); }
+    if (e.ev === 'turn' && day === today) { turnsToday++; if (e.ms) lat.push(e.ms); tokToday += (e.tokIn || 0) + (e.tokOut || 0); costToday += turnCost(e, rates); }
     if (e.ev === 'brain_exit' && day === today) errors++;
   }
   const avgMs = lat.length ? Math.round(lat.slice(-10).reduce((a, b) => a + b, 0) / Math.min(lat.length, 10)) : 0;
@@ -269,7 +292,40 @@ function vitals() {
     try { n = parseInt(require('child_process').execFileSync('git', ['-C', MEMORY_DIR, 'rev-list', '--count', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(), 10) || 0; } catch {}
     memCommitCache = { t: Date.now(), n };
   }
-  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+  // costToday is an ESTIMATE (env-overridable rates); rounded to cents. Only ADD fields here — the HUD
+  // depends on the existing /vitals shape, so this stays backward-compatible.
+  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, costToday: Math.round(costToday * 100) / 100, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+}
+
+// ---- usage summary: tokens / turns / ESTIMATED cost over today / last 7d / last 30d ---------------
+// Reads ONLY the bounded telemetry-log tail (never outside the log), buckets each {ev:'turn'} line by
+// its ISO day into windows, and accumulates tokens + an est. cost per window. Bounded by tailLines so a
+// huge log can't blow up; days beyond the tail simply aren't counted (documented as a tail estimate).
+function usageSummary() {
+  const rates = priceRates();
+  const dayMs = 86400000, now = Date.now();
+  const dayStr = (offset) => new Date(now - offset * dayMs).toISOString().slice(0, 10);
+  const today = dayStr(0);
+  const win7 = dayStr(6), win30 = dayStr(29); // inclusive lower bounds (today + previous 6 / 29 days)
+  const mk = () => ({ turns: 0, tokIn: 0, tokOut: 0, tokCache: 0, costUsd: 0 });
+  const acc = { today: mk(), last7d: mk(), last30d: mk() };
+  const add = (b, e, c) => { b.turns++; b.tokIn += e.tokIn || 0; b.tokOut += e.tokOut || 0; b.tokCache += e.tokCache || 0; b.costUsd += c; };
+  for (const ln of tailLines(LOGFILE, 1 << 20)) { // 1MB tail — bounds the scan; older days fall outside the window anyway
+    let e; try { e = JSON.parse(ln); } catch { continue; }
+    if (e.ev !== 'turn') continue;
+    const day = (e.t || '').slice(0, 10);
+    if (day < win30) continue;
+    const c = turnCost(e, rates);
+    add(acc.last30d, e, c);
+    if (day >= win7) add(acc.last7d, e, c);
+    if (day === today) add(acc.today, e, c);
+  }
+  const round = (b) => ({ turns: b.turns, tokIn: b.tokIn, tokOut: b.tokOut, tokCache: b.tokCache, costUsd: Math.round(b.costUsd * 100) / 100 });
+  return {
+    note: 'cost is an ESTIMATE from env-overridable rates (URFAEL_PRICE_{SONNET,OPUS}_{IN,OUT}); read from the bounded log tail',
+    rates,
+    today: round(acc.today), last7d: round(acc.last7d), last30d: round(acc.last30d),
+  };
 }
 
 // ---- session archive: every turn appended to a daily JSONL in the private memory repo -----------
@@ -536,6 +592,10 @@ const server = http.createServer(async (req, res) => {
   } else if (req.url === '/vitals') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(vitals()));
+  } else if (req.url === '/usage') {
+    // GET /usage — tokens/turns/ESTIMATED cost for today / last 7d / last 30d, from the bounded log tail.
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(usageSummary()));
   } else if (req.method === 'POST' && req.url === '/job') {
     // enqueue a detached background job (runs concurrently with voice — NOT in the serialized chain).
     const body = await readBody(req);

@@ -19,6 +19,25 @@ const SOCK = path.join(JDIR, 'daemon.sock');
 const TOKENF = path.join(JDIR, 'dashboard.token');
 const MAX_BODY = 262144;                                   // 256KB request-body cap (mirror the daemon)
 
+// ---- PWA chrome: manifest + inline icon (static, carries NO data) --------------------------------
+// The manifest and its icon are pure presentation — no brain data, no token — so they are served
+// PRE-AUTH like static chrome (a browser fetches the manifest before any user gesture). They never
+// expose anything the token gates. Icon is an inline gold-rune SVG as a data URL (no extra route, no fs).
+const ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">' +
+  '<rect width="512" height="512" rx="96" fill="#0c0b09"/>' +
+  '<g fill="none" stroke="#d8a23a" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M256 96 L256 416"/><path d="M256 188 L344 132"/><path d="M256 256 L168 200"/>' +
+  '<path d="M256 324 L344 268"/></g></svg>';
+const ICON_DATA_URL = 'data:image/svg+xml;base64,' + Buffer.from(ICON_SVG).toString('base64');
+function manifestJson() {
+  return JSON.stringify({
+    name: 'Urfael', short_name: 'Urfael', description: 'Urfael brain console',
+    start_url: '/', scope: '/', display: 'standalone', orientation: 'portrait-primary',
+    background_color: '#0c0b09', theme_color: '#d8a23a',
+    icons: [{ src: ICON_DATA_URL, sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
+  });
+}
+
 // ---- token: generate-once, 0600, never world-readable --------------------------------------------
 function loadOrCreateToken() {
   try {
@@ -109,36 +128,64 @@ function unauthorized(res) { res.writeHead(401, { 'Content-Type': 'text/plain', 
 // ---- the page: one self-contained inline HTML+JS doc, gold-on-dark, Console identity ------------------------
 function pageHtml() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>Urfael</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#d8a23a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Urfael">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="${ICON_DATA_URL}">
+<link rel="apple-touch-icon" href="${ICON_DATA_URL}">
+<title>Urfael</title>
 <style>
 :root{--gold:#d8a23a;--gold2:#f0c768;--bg:#0c0b09;--bg2:#15130f;--ink:#ece6d8;--dim:#8a836f}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1c180f,#0c0b09);color:#ece6d8;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-header{display:flex;align-items:baseline;gap:12px;padding:18px 22px;border-bottom:1px solid #2a2419}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1c180f,#0c0b09);color:#ece6d8;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+header{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 12px;padding:18px 22px;padding-left:max(22px,env(safe-area-inset-left));padding-right:max(22px,env(safe-area-inset-right));border-bottom:1px solid #2a2419}
 h1{margin:0;font-size:18px;letter-spacing:.18em;color:var(--gold);font-weight:600}
 .sub{color:#8a836f;font-size:12px}
-main{max-width:980px;margin:0 auto;padding:22px}
+main{max-width:980px;margin:0 auto;padding:22px;padding-left:max(22px,env(safe-area-inset-left));padding-right:max(22px,env(safe-area-inset-right));padding-bottom:max(22px,env(safe-area-inset-bottom))}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px}
 .card{background:var(--bg2);border:1px solid #2a2419;border-radius:10px;padding:14px 16px}
 .k{color:#8a836f;font-size:11px;text-transform:uppercase;letter-spacing:.12em}
 .v{color:var(--gold2);font-size:20px;margin-top:4px}
 section{background:var(--bg2);border:1px solid #2a2419;border-radius:10px;padding:16px;margin-bottom:18px}
 h2{margin:0 0 10px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#b79a5f;font-weight:600}
-.row{padding:7px 0;border-top:1px solid #221d14;color:#cfc7b4}
+.row{padding:7px 0;border-top:1px solid #221d14;color:#cfc7b4;word-break:break-word;overflow-wrap:anywhere}
 .row:first-of-type{border-top:0}
 .t{color:var(--gold);font-size:12px}.ch{color:#7e7660;font-size:11px}
+#usage{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.ucard{background:#0c0b09;border:1px solid #221d14;border-radius:8px;padding:10px 12px}
+.ucard .uk{color:#8a836f;font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.ucard .uc{color:var(--gold2);font-size:18px;margin-top:3px}
+.ucard .ut{color:#7e7660;font-size:11px;margin-top:2px}
+.usage-note{color:#6f6857;font-size:11px;font-style:italic;margin-top:10px}
 input,textarea{width:100%;background:#0c0b09;border:1px solid #2a2419;color:#ece6d8;border-radius:8px;padding:10px 12px;font:inherit}
 textarea{min-height:60px;resize:vertical}
 .ask-wrap{display:flex;gap:10px;margin-top:8px}
-button{background:var(--gold);color:#171307;border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+button{background:var(--gold);color:#171307;border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap;min-height:44px}
 button:disabled{opacity:.5;cursor:default}
-#reply{white-space:pre-wrap;margin-top:12px;color:#e7dfc9;min-height:20px}
+#reply{white-space:pre-wrap;margin-top:12px;color:#e7dfc9;min-height:20px;word-break:break-word;overflow-wrap:anywhere}
 .muted{color:#7e7660}.empty{color:#6f6857;font-style:italic}
 a{color:var(--gold2)}
+@media (max-width:640px){
+  header{padding:14px 16px}main{padding:16px}
+  h1{font-size:16px;letter-spacing:.14em}
+  section{padding:13px}
+  .v{font-size:18px}
+  .ask-wrap{flex-direction:column}
+  button{width:100%}
+  textarea,input{font-size:16px} /* >=16px stops iOS auto-zoom on focus */
+}
 </style></head><body>
 <header><h1>URFAEL</h1><span class="sub" id="status">connecting…</span></header>
 <main>
   <div class="grid" id="vitals"></div>
+  <section><h2>Usage &amp; cost (est.)</h2><div id="usage"><span class="empty">…</span></div>
+    <div class="usage-note">cost is an estimate from override-able rates, read from the recent log tail</div>
+  </section>
   <section><h2>Ask</h2>
     <div class="ask-wrap"><textarea id="q" placeholder="ask the brain…"></textarea><button id="send">send</button></div>
     <div id="reply"></div>
@@ -163,6 +210,14 @@ function vit(){return api('/api/vitals').then(function(v){
   var c=[['turns today',v.turnsToday],['avg ms',v.avgMs],['tokens',v.tokToday>=1000?Math.round(v.tokToday/1000)+'k':(v.tokToday||0)],['mem commits',v.memCommits],['uptime',Math.round((v.uptimeS||0)/60)+'m'],['restarts',v.errors]];
   $('#vitals').innerHTML=c.map(function(x){return '<div class="card"><div class="k">'+esc(x[0])+'</div><div class="v">'+esc(x[1])+'</div></div>'}).join('');
 }).catch(function(){$('#status').textContent='brain offline'})}
+function ktok(n){n=n||0;return n>=1000?Math.round(n/1000)+'k':String(n)}
+function usage(){return api('/api/usage').then(function(u){
+  if(!u||!u.today){$('#usage').innerHTML='<span class="empty">no usage yet</span>';return}
+  var rows=[['today',u.today],['last 7d',u.last7d],['last 30d',u.last30d]];
+  $('#usage').innerHTML=rows.map(function(r){var b=r[1]||{};
+    return '<div class="ucard"><div class="uk">'+esc(r[0])+'</div><div class="uc">$'+esc((b.costUsd||0).toFixed(2))+'<span class="muted" style="font-size:11px"> est.</span></div><div class="ut">'+esc(b.turns||0)+' turns · '+esc(ktok((b.tokIn||0)+(b.tokOut||0)))+' tok</div></div>';
+  }).join('');
+}).catch(function(){})}
 function reminders(){return api('/api/reminders').then(function(rs){
   $('#reminders').innerHTML=(rs&&rs.length)?rs.map(function(r){return '<div class="row"><span class="t">'+esc((r.at||'').replace('T',' ').slice(0,16))+'</span> '+esc(r.text)+(r.repeat?' <span class="ch">(repeats)</span>':'')+'</div>'}).join(''):'<span class="empty">none scheduled</span>';
 }).catch(function(){})}
@@ -179,7 +234,7 @@ function send(){var t=$('#q').value.trim();if(!t)return;var b=$('#send');b.disab
   api('/api/ask',{method:'POST',body:JSON.stringify({text:t})}).then(function(r){$('#reply').textContent=(r&&r.text)||'(no reply)'}).catch(function(){$('#reply').textContent='(error)'}).then(function(){b.disabled=false})}
 $('#send').addEventListener('click',send);
 $('#q').addEventListener('keydown',function(e){if((e.metaKey||e.ctrlKey)&&e.key==='Enter')send()});
-function tick(){vit();reminders();jobs()}
+function tick(){vit();usage();reminders();jobs()}
 tick();setInterval(tick,5000);
 </script></body></html>`;
 }
@@ -196,6 +251,15 @@ const server = http.createServer(async (req, res) => {
   let u; try { u = new URL(req.url, 'http://127.0.0.1'); } catch { res.writeHead(400); res.end(); return; }
   const pathname = u.pathname;
 
+  // PWA manifest: pure static chrome (no brain data, no token) served PRE-AUTH — a browser fetches the
+  // manifest WITHOUT credentials, so gating it would silently break installability. It exposes nothing the
+  // token protects. Still a fixed path (no fs lookup, no traversal); the icon is inlined as a data URL.
+  if (req.method === 'GET' && pathname === '/manifest.webmanifest') {
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+    res.end(manifestJson()); return;
+  }
+
   // auth: header OR cookie OR a ?token= match (which then sets the cookie). Anything else -> 401, no hints.
   const header = req.headers['x-urfael-token'];
   const qtok = u.searchParams.get('token');
@@ -208,7 +272,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && pathname === '/') {
     const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'" };
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; manifest-src 'self'" };
     // HttpOnly + SameSite=Strict + Path=/ : the token cookie can't be read by JS, sent cross-site, or leaked via referrer.
     if (setCookie) headers['Set-Cookie'] = 'urfael_dash=' + encodeURIComponent(TOKEN) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000';
     res.writeHead(200, headers); res.end(pageHtml()); return;
@@ -216,6 +280,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && pathname === '/api/vitals') return sendJson(res, 200, (await daemonGet('/vitals')) || {});
+    if (req.method === 'GET' && pathname === '/api/usage') return sendJson(res, 200, (await daemonGet('/usage')) || {});
     if (req.method === 'GET' && pathname === '/api/reminders') return sendJson(res, 200, (await daemonGet('/reminders')) || []);
     if (req.method === 'GET' && pathname === '/api/jobs') return sendJson(res, 200, (await daemonGet('/jobs')) || []);
     if (req.method === 'GET' && pathname === '/api/sessions') return sendJson(res, 200, await searchSessions(u.searchParams.get('q') || ''));

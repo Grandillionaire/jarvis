@@ -305,8 +305,10 @@ async function loadHearth() {
   const el = $('#hearth-grid'); el.innerHTML = '';
   if (!v) { el.innerHTML = '<p class="hint">The brain is asleep — send a message to wake it.</p>'; return; }
   const tok = v.tokToday >= 1000 ? Math.round(v.tokToday / 1000) + 'k' : (v.tokToday || 0);
+  // costToday is an env-overridable ESTIMATE from the daemon (may be absent on an older daemon — show '—').
+  const cost = (typeof v.costToday === 'number') ? '$' + v.costToday.toFixed(2) : '—';
   const cells = [['model', v.model], ['warm sessions', (v.warm || []).length], ['turns today', v.turnsToday],
-    ['tokens today', tok], ['avg latency', v.avgMs ? v.avgMs + 'ms' : '—'], ['memory commits', v.memCommits],
+    ['tokens today', tok], ['cost (est. today)', cost], ['avg latency', v.avgMs ? v.avgMs + 'ms' : '—'], ['memory commits', v.memCommits],
     ['uptime', v.uptimeS < 3600 ? Math.round(v.uptimeS / 60) + 'm' : Math.round(v.uptimeS / 3600) + 'h'], ['brain restarts', v.errors]];
   for (const [k, val] of cells) {
     const d = document.createElement('div'); d.className = 'vital';
