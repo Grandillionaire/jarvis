@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="vault-template/_urfael/assets/urfael-logo.svg" width="128" alt="Urfael" />
+<img src="vault-template/_urfael/assets/urfael-logo.svg" width="112" alt="Urfael — the Uruz rune" />
 
 # U R F A E L
+
+<img src="vault-template/_urfael/assets/urfael-runes.svg" width="200" alt="URFAEL spelled in Elder Futhark runes" />
 
 **An old intelligence in service to one person: you.**
 
@@ -97,7 +99,7 @@ When you opt into full capability with `URFAEL_YOLO=1`, Urfael becomes a real ag
 
 ## The name
 
-Urfael is an original character: an old intelligence sworn to one person, woken into a machine. The name is a Sindarin-styled coinage, used for this independent project — no affiliation with any film, game, or estate is implied.
+Urfael is an original character: an old intelligence sworn to one person, woken into a machine. The name is a Sindarin-styled coinage; the mark is the **Uruz rune (ᚢ)** — the "U" of the Elder Futhark, the real, public-domain runic script that fantasy dwarf-runes were drawn from. No affiliation with any film, game, or estate is implied.
 
 ## Contributing
 

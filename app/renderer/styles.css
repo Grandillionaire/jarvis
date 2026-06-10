@@ -1,6 +1,6 @@
 :root {
   --gold: #d4a85a; --gold-soft: #ecd3a0; --ember: #ff8a42;
-  --glass: rgba(24, 17, 9, 0.78); --line: rgba(212, 168, 90, 0.32);
+  --glass: rgba(24, 17, 9, 0.78); --line: rgba(212, 168, 90, 0.24);
   --body: #f3ead7; --label: #ad8c55;
   --serif: "Iowan Old Style", "Palatino", "Book Antiqua", Georgia, serif;
 }
@@ -14,12 +14,6 @@ canvas { display: block; }
 
 /* ambient layers (non-interactive) */
 #particles { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
-#scanlines {  /* woven-thread shimmer — a faint gold weave instead of sci-fi scanlines */
-  position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0.35;
-  background: repeating-linear-gradient(115deg, rgba(212,168,90,0.04) 0px, rgba(212,168,90,0.04) 1px, transparent 2px, transparent 7px);
-  mix-blend-mode: screen; animation: weave 26s linear infinite;
-}
-@keyframes weave { from { background-position: 0 0; } to { background-position: 240px 110px; } }
 
 /* ---- orb cluster, bottom-right ---- */
 #orbwrap {
@@ -28,14 +22,15 @@ canvas { display: block; }
 }
 #orb { -webkit-app-region: no-drag; cursor: pointer; transition: transform 0.4s cubic-bezier(.2,.8,.2,1); }
 body.state-idle #orb { transform: scale(0.62); }
+#runes { margin-top: -4px; height: 15px; opacity: 0.85; filter: drop-shadow(0 0 5px rgba(212,168,90,0.45)); }
 #wordmark {
-  margin-top: -6px; font-family: var(--serif); font-size: 12px; letter-spacing: 8px; color: var(--gold);
-  text-shadow: 0 0 12px rgba(212,168,90,0.55); opacity: 0.85; font-variant: small-caps;
+  margin-top: 4px; font-family: var(--serif); font-size: 9px; letter-spacing: 7px; color: var(--gold);
+  opacity: 0.6; font-variant: small-caps;
 }
 body.state-idle #wordmark { opacity: 0.4; }
 #caption {
   margin-top: 8px; max-width: 92%; text-align: center; font-size: 13px; line-height: 1.35;
-  color: var(--gold-soft); text-shadow: 0 0 10px rgba(212,168,90,0.4); min-height: 16px;
+  color: var(--gold-soft); text-shadow: 0 0 6px rgba(212,168,90,0.25); min-height: 16px;
 }
 #caption.dim { color: rgba(236, 211, 160, 0.45); }
 #close {
@@ -52,7 +47,7 @@ body.state-idle #wordmark { opacity: 0.4; }
 body.state-expanded #dock { opacity: 1; transform: none; pointer-events: auto; }
 .chip {
   -webkit-app-region: no-drag; cursor: pointer; font-size: 10px; letter-spacing: 0.5px; padding: 3px 9px;
-  border: 1px solid var(--line); border-radius: 11px; color: var(--gold-soft); background: rgba(26,19,10,0.5);
+  border: 1px solid var(--line); border-radius: 3px; color: var(--gold-soft); background: rgba(26,19,10,0.5);
 }
 .chip:hover { background: rgba(212,168,90,0.2); color: #fff; }
 
@@ -66,8 +61,8 @@ body.state-active #rail, body.state-expanded #rail { opacity: 1; }
 
 .panel {
   background: var(--glass); backdrop-filter: blur(14px);
-  border: 1px solid var(--line); border-radius: 12px; padding: 9px 13px 11px;
-  box-shadow: 0 0 26px rgba(212,168,90,0.12), inset 0 0 36px rgba(212,168,90,0.04);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px 11px;
+  box-shadow: 0 0 14px rgba(212,168,90,0.08);
   position: relative; overflow: hidden;
   clip-path: inset(0 0 100% 0); transition: clip-path 0.4s cubic-bezier(.2,.8,.2,1), opacity 0.3s; opacity: 0;
 }

@@ -96,7 +96,7 @@ You have tools to operate the machine (browser, desktop, files, shell, connector
 When asked for a chart/graph/diagram/visual, MAKE it, save to `03_Resources/visuals/`, embed in a logo'd note,
 open it, and comment briefly.
 - diagram/flow/timeline/mindmap → a ` ```mermaid ` block (Obsidian renders it natively).
-- data chart → a **matplotlib** Python script via Bash → PNG (dark style, cyan accents, `dpi=150`).
+- data chart → a **matplotlib** Python script via Bash → PNG (dark style, gold accents, `dpi=150`).
 - interactive → self-contained HTML (Chart.js/Plotly CDN) → open in the browser.
 - fallback → QuickChart API (`curl ... quickchart.io/chart`).
 

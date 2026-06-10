@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 110" width="380" height="110">
+  <!-- U R F A E L in Elder Futhark: Uruz, Raido, Fehu, Ansuz, Ehwaz, Laguz (public domain) -->
+  <g stroke="#d4a85a" stroke-width="6" stroke-linecap="butt" stroke-linejoin="miter" fill="none">
+    <!-- ᚢ Uruz -->
+    <g transform="translate(10,0)"><path d="M15 10 L15 100"/><path d="M15 10 L45 32"/><path d="M45 32 L45 100"/></g>
+    <!-- ᚱ Raido -->
+    <g transform="translate(73,0)"><path d="M15 10 L15 100"/><path d="M15 10 L45 30 L15 52"/><path d="M15 52 L45 100"/></g>
+    <!-- ᚠ Fehu -->
+    <g transform="translate(136,0)"><path d="M15 10 L15 100"/><path d="M15 34 L45 14"/><path d="M15 60 L45 40"/></g>
+    <!-- ᚨ Ansuz -->
+    <g transform="translate(199,0)"><path d="M15 10 L15 100"/><path d="M15 14 L45 36"/><path d="M15 40 L45 62"/></g>
+    <!-- ᛖ Ehwaz -->
+    <g transform="translate(262,0)"><path d="M15 100 L15 10 L30 38 L45 10 L45 100"/></g>
+    <!-- ᛚ Laguz -->
+    <g transform="translate(325,0)"><path d="M18 10 L18 100"/><path d="M18 10 L46 36"/></g>
+  </g>
+</svg>

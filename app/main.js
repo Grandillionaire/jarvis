@@ -182,7 +182,7 @@ function readTtsEnv() {
       const t = line.trim();
       if (!t || t.startsWith('#') || !t.includes('=')) continue;
       const i = t.indexOf('=');
-      cfg[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+      cfg[t.slice(0, i).trim()] = t.slice(i + 1).replace(/\s+#.*$/, '').trim(); // strip inline comments
     }
   } catch {}
   const out = {

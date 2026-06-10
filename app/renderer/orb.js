@@ -1,6 +1,7 @@
 'use strict';
 // Urfael visualizer with switchable looks: 'sigil' (rings + telemetry), 'rune' (radiant ring),
 // 'ember' (forge coil), 'eye' (a face that follows the cursor + reacts to audio).
+// Default 'sigil' is the minimalist rune-stone.
 // All reuse one audio loop; theme is swapped live via setTheme().
 
 const STATE_COLORS = {
@@ -61,68 +62,53 @@ class UrfaelOrb {
     else this._drawArc();
   }
 
-  // ---------- Mk II: arc-reactor core fused with a telemetry ring + radar sweep ----------
+  // ---------- sigil: minimalist rune-stone — one ring, the Uruz rune, breathing light ----------
   _drawMk2() {
     const { ctx, size } = this;
     const c = STATE_COLORS[this.state] || STATE_COLORS.idle;
     const col = (a) => this._col(c, a);
-    const cx = size / 2, cy = size / 2, R = size * 0.26, lvl = this.level, t = performance.now() / 1000;
-    this.spin += (this.state === 'thinking' ? 2.2 : 0.45 + lvl * 1.3) * 0.016;
-    ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round'; ctx.shadowColor = col(0.9);
+    const cx = size / 2, cy = size / 2, R = size * 0.30, lvl = this.level, t = performance.now() / 1000;
+    this.spin += (this.state === 'thinking' ? 1.6 : 0.25 + lvl * 0.8) * 0.016;
+    ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'butt'; ctx.shadowColor = col(0.8);
 
-    const glow = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R * (1.9 + lvl));
-    glow.addColorStop(0, col(0.16 + lvl * 0.22)); glow.addColorStop(1, col(0));
+    // soft backdrop glow (restrained)
+    const glow = ctx.createRadialGradient(0, 0, R * 0.3, 0, 0, R * (1.5 + lvl * 0.4));
+    glow.addColorStop(0, col(0.10 + lvl * 0.12)); glow.addColorStop(1, col(0));
     ctx.fillStyle = glow; ctx.fillRect(-size / 2, -size / 2, size, size);
 
-    // radial FFT telemetry ring (outer)
-    const bars = 96, rT = R * 1.5;
-    ctx.shadowBlur = 6;
-    for (let i = 0; i < bars; i++) {
+    // the ring
+    ctx.shadowBlur = 6; ctx.lineWidth = 1.5; ctx.strokeStyle = col(0.8);
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+
+    // voice: a sparse tick ring just inside the rim
+    const ticks = 48, rI = R * 0.88;
+    for (let i = 0; i < ticks; i++) {
       let amp;
-      if (this.freq && (this.state === 'listening' || this.state === 'speaking')) amp = this.freq[Math.floor((i / bars) * (this.freq.length * 0.75))] / 255;
-      else amp = 0.05 + 0.05 * Math.abs(Math.sin(i * 0.5 + t * 1.6));
-      const len = R * (0.04 + amp * 0.42), a = (i / bars) * Math.PI * 2;
-      ctx.strokeStyle = col(0.25 + amp * 0.6); ctx.lineWidth = 1.8;
-      ctx.beginPath(); ctx.moveTo(Math.cos(a) * rT, Math.sin(a) * rT); ctx.lineTo(Math.cos(a) * (rT + len), Math.sin(a) * (rT + len)); ctx.stroke();
+      if (this.freq && (this.state === 'listening' || this.state === 'speaking')) amp = this.freq[Math.floor((i / ticks) * (this.freq.length * 0.7))] / 255;
+      else amp = 0.05 + 0.04 * Math.abs(Math.sin(i * 0.7 + t * 1.2));
+      const a = (i / ticks) * Math.PI * 2 - Math.PI / 2;
+      const len = R * 0.05 + amp * R * 0.16;
+      ctx.strokeStyle = col(0.15 + amp * 0.5); ctx.lineWidth = 1.5; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * rI, Math.sin(a) * rI); ctx.lineTo(Math.cos(a) * (rI - len), Math.sin(a) * (rI - len)); ctx.stroke();
     }
 
-    // outer guide rings + tick gauges
-    const ring = (radius, w, alpha, blur) => { ctx.shadowBlur = blur; ctx.strokeStyle = col(alpha); ctx.lineWidth = w; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.stroke(); };
-    ring(rT, 1, 0.28, 4);
-    ring(R * 1.18, 2, 0.7, 12);
-    // 3 gauge notches at the cardinal-ish points (geometry only; labels live in the DOM HUD)
-    ctx.shadowBlur = 10; ctx.lineWidth = 3; ctx.strokeStyle = col(0.85);
-    for (const ang of [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6]) { ctx.beginPath(); ctx.moveTo(Math.cos(ang) * (R * 1.18), Math.sin(ang) * (R * 1.18)); ctx.lineTo(Math.cos(ang) * (R * 1.30), Math.sin(ang) * (R * 1.30)); ctx.stroke(); }
-
-    // rotating segmented inner ring
-    ctx.shadowBlur = 10; ctx.lineWidth = 2.5; ctx.strokeStyle = col(0.6);
-    for (let i = 0; i < 5; i++) { const a0 = (i / 5) * Math.PI * 2 + this.spin * 0.6; ctx.beginPath(); ctx.arc(0, 0, R * 0.95, a0 + 0.12, a0 + Math.PI / 2.5 - 0.12); ctx.stroke(); }
-    // counter-rotating fine ticks
-    ctx.lineWidth = 2; ctx.strokeStyle = col(0.4);
-    for (let i = 0; i < 30; i++) { const a = (i / 30) * Math.PI * 2 - this.spin * 1.3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * 0.66, Math.sin(a) * R * 0.66); ctx.lineTo(Math.cos(a) * R * 0.72, Math.sin(a) * R * 0.72); ctx.stroke(); }
-
-    // thinking: two indeterminate compute-arcs (no fake %)
+    // thinking: one slow arc tracing the rim
     if (this.state === 'thinking') {
-      ctx.shadowBlur = 14; ctx.lineWidth = 3; ctx.strokeStyle = col(0.95);
-      const a = this.spin * 2.4;
-      ctx.beginPath(); ctx.arc(0, 0, R * 1.34, a, a + 1.1); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, R * 1.34, a + Math.PI, a + Math.PI + 1.1); ctx.stroke();
+      ctx.shadowBlur = 10; ctx.lineWidth = 2.5; ctx.strokeStyle = col(0.95);
+      const a = this.spin * 2.0;
+      ctx.beginPath(); ctx.arc(0, 0, R, a, a + 0.9); ctx.stroke();
     }
 
-    // radar sweep with alpha trail
-    const sweep = (t * 0.6) % (Math.PI * 2);
-    const grad = ctx.createConicGradient ? null : null;
-    ctx.save(); ctx.rotate(sweep);
-    const sw = ctx.createLinearGradient(0, 0, R * 1.18, 0);
-    sw.addColorStop(0, col(0)); sw.addColorStop(1, col(0.5));
-    ctx.strokeStyle = sw; ctx.lineWidth = 2; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R * 1.18, 0); ctx.stroke();
-    ctx.restore();
-
-    // pulsing core
-    const coreR = R * (0.42 + lvl * 0.22), core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR);
-    core.addColorStop(0, col(0.98)); core.addColorStop(0.6, col(0.5 + lvl * 0.3)); core.addColorStop(1, col(0));
-    ctx.shadowBlur = 30; ctx.fillStyle = core; ctx.beginPath(); ctx.arc(0, 0, coreR, 0, Math.PI * 2); ctx.fill();
+    // the Uruz rune (ᚢ — public-domain Elder Futhark), breathing with the voice
+    const w = R * 0.52, x0 = -w * 0.5, x1 = w * 0.5;
+    const yTop = -w * 0.62, yBot = w * 0.66, yMid = -w * 0.20;
+    ctx.lineWidth = Math.max(3, R * 0.085); ctx.shadowBlur = 12 + lvl * 18;
+    ctx.strokeStyle = col(0.75 + lvl * 0.25);
+    ctx.beginPath();
+    ctx.moveTo(x0, yBot); ctx.lineTo(x0, yTop);
+    ctx.lineTo(x1, yMid);
+    ctx.lineTo(x1, yBot);
+    ctx.stroke();
     ctx.restore();
   }
 

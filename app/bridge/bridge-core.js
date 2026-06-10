@@ -19,7 +19,7 @@ function loadEnv() {
     for (const line of fs.readFileSync(ENVF, 'utf8').split('\n')) {
       const s = line.trim();
       if (!s || s.startsWith('#') || !s.includes('=')) continue;
-      const i = s.indexOf('='); cfg[s.slice(0, i).trim()] = s.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+      const i = s.indexOf('='); cfg[s.slice(0, i).trim()] = s.slice(i + 1).replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, ''); // strip inline comments
     }
   } catch {}
   return cfg;
