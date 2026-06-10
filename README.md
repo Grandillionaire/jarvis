@@ -1,117 +1,217 @@
 <div align="center">
 
-<img src="vault-template/_urfael/assets/urfael-logo.svg" width="112" alt="Urfael — the Uruz rune" />
+<img src="vault-template/_urfael/assets/urfael-logo.svg" width="104" alt="Urfael — the Uruz rune" />
 
 # U R F A E L
 
-<img src="vault-template/_urfael/assets/urfael-runes.svg" width="200" alt="URFAEL spelled in Elder Futhark runes" />
+<img src="vault-template/_urfael/assets/urfael-runes.svg" width="190" alt="URFAEL spelled in Elder Futhark runes" />
 
-**An old intelligence in service to one person: you.**
+**A personal, voice-capable AI assistant you run on your own machine — built security-first, on the flat-rate Claude subscription you already have. No inbound port to attack. No per-token meter running.**
 
-It listens, speaks, remembers, and acts — on the Claude Code subscription you already have.
+It listens and speaks locally, sandboxes every autonomous action fail-closed, allowlists who can reach it, regression-tests itself against its own adversarial attacks, and tells you plainly what's battle-tested and what isn't.
 
-[![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%26_Intel-1c150b?style=flat-square)](#requirements)
-[![Linux](https://img.shields.io/badge/Linux-newer-3a2d18?style=flat-square)](#linux)
+[![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%26_Intel-1c150b?style=flat-square)](#install)
+[![Linux](https://img.shields.io/badge/Linux-newer-3a2d18?style=flat-square)](#install)
 [![No API key to start](https://img.shields.io/badge/API_key-not_required-7a5c28?style=flat-square)](#voice)
+[![No inbound port](https://img.shields.io/badge/inbound_port-none-2ea44f?style=flat-square)](#security)
 [![License](https://img.shields.io/badge/license-MIT-9a7434?style=flat-square)](LICENSE)
+
+<br/>
+
+<img src="docs/media/console.png" width="820" alt="The Urfael Console — gold-on-dark desktop app: sidebar of views, runic identity, voice and type input" />
+
+<sub>The Console — chat with live tool activity, push-to-talk, archive, reminders, jobs, settings. One window, keyboard-first.</sub>
 
 </div>
 
-Urfael is a personal AI that lives on your Mac the way a counselor lives at your elbow. A gold seeing-stone waits in the corner of your screen; speak to it and a real voice answers while the full written answer lands beside it. An always-on local brain runs the `claude` CLI on your existing Claude Code login. An Obsidian vault is its archive; a private git repo is its memory; every conversation makes it a little more yours — it distills what it learned, keeps a model of who you are, and writes down the procedures it figures out so it never has to figure them out twice.
+> The other self-hosted assistants optimize for channel count and star count. Urfael optimizes for not getting owned — and for not lying to you about what it can do.
 
-It speaks in remarks, not read-alouds. It stays silent unless something needs you. And it ships safe: power stays off until you turn it on, after reading [SECURITY.md](SECURITY.md).
+---
 
-## Quickstart
+## Contents
+
+- [Why Urfael](#why-urfael) · [the honest comparison](#how-it-compares)
+- [Highlights](#highlights)
+- [Security model](#security) — the moat
+- [Install](#install) & [Quick start](#quick-start)
+- [The surfaces](#the-surfaces): Console · orb · TUI · web dashboard
+- [Channels](#channels) · [Voice](#voice) · [Memory & recall](#memory--recall) · [Autonomous coding](#autonomous-coding) · [Cost](#cost)
+- [What's lightly tested](#whats-lightly-tested) — read this
+- [Who this is *not* for](#who-this-is-not-for)
+- [The name](#the-name) · [Contributing](#contributing) · [License](#license)
+
+## Why Urfael
+
+Urfael is an always-on local brain that runs your installed `claude` CLI as a subprocess — so it rides your existing Claude Code login with **no API key and nothing to connect**. An Obsidian vault is its archive; a private git repo is its memory; voice in and out runs on-device. It answers in a real voice while the full written answer lands on screen, stays silent unless something needs you, and ships with power **off** until you turn it on.
+
+What makes it different isn't a feature count — it's the blast radius. Nothing listens on a network port. Every remote message is allowlisted to you before the brain sees it and sandboxed read-only by default. Autonomous coding runs in a throwaway container or on a remote host, never with your secrets mounted. And the security-critical paths ship with adversarial regression tests that try to break them — the literal attacks a reviewer found, frozen so they can never regress.
+
+### How it compares
+
+Every win below is real, and every gap is admitted in the same grid — the honesty is the point. `✅` solid · `⚠️` partial / by-design tradeoff · `❌` absent.
+
+| Capability | **Urfael** | Hermes | OpenClaw |
+|---|---|---|---|
+| No inbound network port | ✅ none open¹ | ⚠️ varies | ⚠️ inbound DMs / gateway |
+| Fail-closed sandboxes | ✅ Docker/SSH, default-deny | ⚠️ optional | ⚠️ optional Docker |
+| Ships adversarial regression tests | ✅ attacks itself | ❌ | ❌ |
+| Owner-allowlist by default | ✅ all channels, before the brain | ⚠️ pairing | ✅ pairing |
+| Local, on-device voice + presence | ✅ whisper + say, orb HUD | ⚠️ TTS/STT | ⚠️ cloud-leaning |
+| Flat-rate cost (no per-token meter) | ✅ your Claude subscription | ❌ per-token APIs | ❌ per-token APIs |
+| Desktop app · TUI · web dashboard | ✅ all three | ⚠️ TUI + desktop | ✅ apps + canvas |
+| Chat channel breadth | ⚠️ 8, curated | ✅ many | ✅ 20+ |
+| Model flexibility | ⚠️ Claude-only, by design | ✅ 200+ models | ✅ many providers |
+| Battle-tested at scale | ⚠️ small, and we say so | ✅ large | ✅ very large |
+| OS coverage | ⚠️ macOS solid, Linux newer | ✅ broad | ✅ broad |
+
+<sub>¹ The lone exception is the optional WhatsApp bridge, whose webhook binds to `127.0.0.1` behind your own tunnel and is HMAC-verified. ² Competitor cells are best-effort fair: both sandbox optionally and both default to DM pairing.</sub>
+
+**We win where it counts for a machine that lives on your desk and acts on your behalf: blast radius, cost predictability, and not overstating maturity.**
+
+## Highlights
+
+Benefit first, mechanism second. Everything is opt-in and guard-railed.
+
+- **Nothing to attack.** The brain speaks only over a `0600` unix socket — no TCP port, nothing the LAN or the internet can reach. ([details](#security))
+- **It heard you, locally.** Push-to-talk in the Console or a spoken wake word; whisper.cpp transcribes and macOS `say` (or local Kokoro) speaks — no cloud STT/TTS by default. The spoken remark streams sentence-by-sentence, and a slow answer gets an "On it, sir." instead of silence.
+- **Flat rate, full stop.** It runs on your Claude Code subscription. Idle costs nothing beyond it; there is no per-token surprise. Token use and an estimated daily/7-day/30-day spend are visible in the app, the dashboard, and `urfael status`.
+- **Memory that compounds.** Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are — all re-read every session. Ask "what did I say about the Berlin trip?" and it **ranks its own history (BM25)** and cites the date.
+- **Skills that grow — installed paranoid.** It writes down procedures it figures out and reuses them; a curator prunes stale ones. Install one from a URL and it **previews the full content and runs a static safety scan first** (dangerous flags, exfil URLs, prompt-injection, hidden unicode), refuses to auto-install anything flagged, and never executes a skill.
+- **Quietly proactive.** "Remind me in 20 minutes" / "every morning at 8" just works — fired as a notification, spoken aloud, pushed to your phone, every window closed. An opt-in heartbeat runs your `HEARTBEAT.md` checklist and stays silent unless something genuinely needs you.
+- **It attacks itself.** The security-critical paths ship with regression tests built from real adversarial findings (allowlist bypasses, SSRF, parser desync, DoS) so they can't quietly rot.
+- **It tells you what it doesn't know.** See [What's lightly tested](#whats-lightly-tested). That section exists on purpose.
+
+## Security
+
+> [!IMPORTANT]
+> Urfael ships **safe by default**: no unrestricted shell, no computer-use, read-only remote turns. You turn power on deliberately, after reading [SECURITY.md](SECURITY.md).
+
+The brain is a local daemon reachable only through a `0600` unix socket — **it never opens a TCP port**. The topology is one-way: Urfael reaches out (to your `claude` login, to chat APIs it polls); nothing reaches in.
+
+- **Allowlist before the brain.** Every message from Telegram/Discord/Slack/iMessage/Email/Matrix/Signal/WhatsApp is checked against *your* id and dropped+audited otherwise — before a single token reaches the model. Remote turns run in a **read-only sandbox** (read + search your vault; no write, no shell, no network egress) and are wrapped in a nonce-framed untrusted-data envelope against prompt injection.
+- **Fail-closed everything.** An unknown channel resolves to the most-restricted profile, not the least. A malformed request is rejected, not guessed.
+- **Sandboxed autonomy.** The `/goal` loop runs on the host, in a throwaway `--network none` Docker container (only the `claude` auth files are staged in — never your `bridge.env`/API keys), or on a remote box over SSH.
+
+> [!WARNING]
+> Full capability (`URFAEL_YOLO=1`) gives the agent an unrestricted shell that also reads untrusted email and web. Run that mode **only** in a VM, container, or throwaway account.
+
+## Install
+
+> [!NOTE]
+> **Prerequisites, stated honestly:** a [Claude Code](https://claude.com/claude-code) subscription (Pro or Max), signed in. macOS on Apple Silicon or Intel is the primary, best-tested target; **Linux is supported but newer**. [Obsidian](https://obsidian.md) with its Local REST API plugin for the vault. Docker only if you want sandboxed autonomous coding.
 
 ```bash
-git clone https://github.com/Grandillionaire/urfael.git && cd urfael   # clone anywhere — the installer records the path
-./install.sh        # checks deps, fetches the local speech model, scaffolds your vault — no keys
+git clone https://github.com/Grandillionaire/urfael.git && cd urfael   # clone anywhere
+./install.sh        # checks deps, fetches the local speech model (checksum-pinned), scaffolds your vault — no keys
 cd app && npm start # the Console opens
 ```
 
-The **Console** is the app: chat with live tool activity, push-to-talk, the full conversation archive, reminders, background jobs, and settings — one window, keyboard-first (⌘1–6 views, ⌘K search). Prefer an ambient presence instead? Set `URFAEL_ORB=1` for the floating seeing-stone overlay and talk hands-free. That is a full voice assistant running on nothing but your Claude Code plan. Nicer voices, a spoken wake word (train a free custom "Urfael" keyword, or use a built-in one), and browser or desktop control are all opt-in, covered in [docs/SETUP.md](docs/SETUP.md).
+`install.sh` is read-it-first friendly: it **never** auto-installs heavy software or enables anything risky. It writes config templates (`chmod 600`), scaffolds `~/Urfael` (your vault) and a private local `~/Urfael-memory` git repo, links the `urfael` CLI, and writes the service files (launchd on macOS, `systemd --user` on Linux) **without loading them**. One Homebrew line covers the rest:
 
-**Hotkeys**   `⌘⇧O` open the Console  ·  `⌘⇧Q` quit  ·  orb mode adds `⌘⇧U` show/hide · `⌘⇧H` HUD · `⌘⇧T` look
-
-## How it works
-
-The desktop app is a thin client: the Console window (and, opt-in, a floating seeing-stone HUD with four looks: `sigil`, `rune`, `ember`, `eye`). The brain is an always-on `launchd` (macOS) / `systemd --user` (Linux) daemon of warm `claude` sessions, so it survives the UI closing and can act on its own. It simply runs your installed `claude` CLI as a subprocess, riding your existing Claude Code login — no API key, nothing to connect: if `claude` works in your terminal, the brain works. Most turns route to Sonnet; the hard ones — code, deep reasoning — escalate to Opus. Memory is plain markdown in a private git repo, re-injected every session. Voice in and out runs locally; the hands are opt-in MCP servers.
-
-```mermaid
-flowchart LR
-    you([you]) -->|local whisper| daemon
-    subgraph mac[your Mac · no cloud]
-      daemon["brain daemon<br/>warm claude sessions"]
-      vault[("Obsidian vault<br/>archive + memory")]
-      daemon <--> vault
-      daemon -->|MCP| hands["browser · desktop · vision"]
-    end
-    daemon -->|spoken remark| tts["local TTS"] --> ear([you hear])
-    daemon -->|full answer| hud["seeing-stone HUD"]
-    plan[/"Claude Code subscription"/] -.-> daemon
+```bash
+brew install ffmpeg whisper-cpp coreutils       # macOS
+# Linux: sudo apt install ffmpeg espeak-ng libnotify-bin grim  (+ build whisper.cpp)
 ```
 
-## What it can do
+The brain uses Claude Code's model **aliases** (`sonnet` for most turns, escalating to `opus` for code & deep reasoning), so it always tracks the latest models your plan supports. Opus needs **Max**; on **Pro**, set `URFAEL_OPUS_MODEL=sonnet`. Full setup — voice tiers, connectors, bridges, Linux — is in [docs/SETUP.md](docs/SETUP.md).
 
-Everything below is opt-in and guard-railed. Urfael ships without unrestricted permissions or computer-use, and you turn power on deliberately.
+### Quick start
 
-- **Voice.** Push-to-talk in the Console, or (orb mode) speak the wake word and talk hands-free. The spoken remark streams sentence-by-sentence (first audio the moment the first sentence lands), and if an answer takes a while it acknowledges out loud — "On it, sir." — instead of leaving silence. You can also just type into the HUD.
-- **Memory that compounds.** The vault holds its knowledge; a private git repo holds what it learns. Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are (`USER.md`) — all re-read every session.
-- **Skills that grow + a paranoid hub.** When it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch; an opt-in curator fixes or deletes stale ones. Share a skill (`urfael skills export`) or install one from a URL (`urfael skills install <url>`) — but it **previews the full content and runs a static safety scan first** (dangerous flags, exfil URLs, prompt-injection, hidden unicode), refuses to auto-install anything flagged, and never executes a skill. OpenClaw's skill hub shipped ~20% malware; ours installs blind never.
-- **Total recall.** Every conversation, from every surface, is archived as plain JSONL in your memory repo. "What did I say about the Berlin trip?" — it ranks its own history (BM25) and cites the date. `urfael sessions search <query>` from any terminal.
-- **A terminal voice.** The same brain answers in your shell: `urfael "summarize my inbox"` streams live; `status`, `jobs`, `reminders`, `remind`, `sessions search`, `stop`, `dashboard` manage the rest. Ctrl+C stops a turn. One daemon, every surface.
-- **A full-screen cockpit.** `urfael tui` is a no-deps terminal UI — streamed transcript with live tool activity, a status bar, Esc to stop, and it always leaves your terminal clean.
-- **A web console (and your phone).** `urfael dashboard` opens a token-gated localhost page (bound to 127.0.0.1 only, constant-time token, no path serving) — the browser surface Hermes and OpenClaw have, locked down harder. It's an installable, responsive **PWA**, so over a tunnel it's a real phone app.
-- **Cost in plain sight.** Tokens and an estimated daily/7d/30d spend are computed from the local log — visible in the Console's Hearth panel, the dashboard, and `urfael status` (the rate is an env-overridable estimate, not a hardcoded fact).
-- **Reminders.** "Remind me in 20 minutes" / "every morning at 8" just works — persisted in the daemon, fired as a notification, spoken aloud, and pushed to your phone, with every window closed.
-- **Heartbeat (opt-in).** Every N minutes it runs your `HEARTBEAT.md` checklist — upcoming events, urgent email, slipping deadlines — and stays silent unless something genuinely needs you.
-- **Calendar and email.** Read, create, and update Google and Apple Calendar plus Reminders. Drafts email, never sends.
-- **Hands and eyes.** Drives the browser with Playwright, controls macOS apps, windows, and files, and sees the screen.
-- **Visuals.** Ask for a chart or diagram and it makes one, in matplotlib, Mermaid, or interactive HTML.
-- **Morning brief.** A spoken 8am rundown of your calendar, inbox, and open loops, with no window open.
-- **Phone control — 8 channels.** Drive it from Telegram, Discord, Slack, iMessage, Email (draft-only), Matrix, Signal, or WhatsApp — owner-allowlisted, text or **voice memos** (transcribed locally, never by a cloud STT). Every one is sandboxed and read-only by default: a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in widenings). None opens an inbound port except WhatsApp, whose webhook binds to localhost behind your own tunnel and is HMAC-verified — see [docs/SETUP.md](docs/SETUP.md).
-- **Background jobs.** Hand off long work (autonomous coding, deep research) to detached, cancellable jobs that don't tie up the conversation and push your phone when they're done.
-- **Autonomous coding.** A `/goal` loop with caps, timeouts, and kill-switches — run it on the host, inside a throwaway `--network none` Docker container (only the claude auth files are staged in, never your secrets), or on a remote box over SSH. It never pushes.
+```bash
+launchctl load -w ~/Library/LaunchAgents/com.urfael.daemon.plist   # macOS: the always-on brain
+# Linux:  systemctl --user enable --now urfael-daemon
+cd app && npm start                                                # the Console
+```
+
+Tap the mic and talk, or just type. That's a full voice assistant running on nothing but your Claude Code plan.
+
+**Hotkeys**  `⌘⇧O` open the Console · `⌘⇧Q` quit · `⌘K` command palette · `⌘1–6` views · orb mode adds `⌘⇧U` show/hide · `⌘⇧T` look
+
+## The surfaces
+
+One brain, four ways to reach it — all thin clients of the same daemon, so a conversation started by voice shows up in the Console, the CLI, and your phone alike.
+
+<table>
+<tr>
+<td width="50%">
+
+**Console** — the desktop app. Streamed replies with one-line tool activity, push-to-talk, the full conversation archive, reminders, background jobs, live cost (Hearth), and settings. Keyboard-first with a `⌘K` command palette.
+
+</td>
+<td width="50%">
+
+<img src="docs/media/palette.png" width="400" alt="Urfael Console command palette (⌘K) — fuzzy view switching with accelerators" />
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>Orb HUD</b> · <b>terminal</b> · <b>full-screen TUI</b> · <b>web dashboard</b> — expand</summary>
+
+- **Orb HUD** (`URFAEL_ORB=1`) — an ambient, click-through seeing-stone in the corner of your screen with four looks (`sigil`, `rune`, `ember`, `eye`). Speak the wake word and talk hands-free.
+- **Terminal** — `urfael "summarize my inbox"` streams the answer live; `status`, `jobs`, `reminders`, `remind`, `sessions search`, `skills`, `stop`, `dashboard` manage the rest. `Ctrl+C` stops a turn.
+- **`urfael tui`** — a no-deps full-screen terminal cockpit: streamed transcript with live tool activity, a status bar, `Esc` to stop, and it always leaves your terminal clean.
+- **Web dashboard** — `urfael dashboard` opens a token-gated localhost page (bound to `127.0.0.1` only, constant-time token, no path serving). It's an **installable, responsive PWA**, so over a tunnel it's a real phone app — the browser surface the others have, locked down harder.
+
+</details>
+
+## Channels
+
+Drive Urfael from **8 owner-allowlisted channels** — text or **voice memos** (transcribed locally, never by a cloud STT). Every one is sandboxed read-only by default and gated to your id before the brain sees anything.
+
+<details>
+<summary>Telegram · Discord · Slack · iMessage · Email (draft-only) · Matrix · Signal · WhatsApp — setup notes</summary>
+
+- **Telegram / Discord / Slack / Matrix** — bot token + your id; outbound only, no inbound port.
+- **iMessage** (macOS) — reads `chat.db` read-only for your allowlisted handle, replies via AppleScript. Needs Full Disk Access.
+- **Email** — IMAP IDLE, **draft-only** (it writes replies to your Drafts, never sends).
+- **Signal** — wraps `signal-cli`.
+- **WhatsApp** — the Cloud API's webhook is the one inbound surface: it binds `127.0.0.1` behind your own tunnel and is HMAC-verified.
+
+See [docs/SETUP.md](docs/SETUP.md). Calendar/Gmail connectors (read briefings, draft email — never send) come from your Claude account.
+
+</details>
 
 ## Voice
 
-The default tier is fully local, offline, and free. Everything above it is optional.
+The default tier is fully local, offline, and free.
 
-| Tier | Speech to text | Text to speech | Cost |
+| Tier | Speech-to-text | Text-to-speech | Cost |
 |---|---|---|---|
-| Default | whisper.cpp, on-device | macOS `say` | free, offline, no key |
-| Quality | `small.en` model | [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), local | free, one extra service |
+| **Default** | whisper.cpp, on-device | macOS `say` / Linux `espeak-ng` | free, offline, no key |
+| Quality | `small.en` | [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), local | free, one extra service |
 | Premium | ElevenLabs Scribe | ElevenLabs | paid, opt-in |
 
-A wake word is optional via Picovoice — any built-in keyword works out of the box, and you can train a custom "Urfael" keyword free at console.picovoice.ai. Otherwise, tap the stone.
+A spoken wake word is optional via Picovoice — any built-in keyword works out of the box, or train a custom "Urfael" keyword free at console.picovoice.ai.
 
-## Requirements
+## Memory & recall
 
-macOS, on Apple Silicon or Intel. [Claude Code](https://claude.com/claude-code) on a paid plan (Pro or Max), signed in. Node 18+. [Obsidian](https://obsidian.md) with its Local REST API plugin. One Homebrew line:
+The vault holds its knowledge; a private git repo holds what it learns. Every conversation, from every surface, is archived as plain JSONL and **ranked with BM25** on recall — `urfael sessions search <query>` from any terminal, or the brain greps its own history when you ask. An end-of-conversation pass distills durable memory, lessons, and a `USER.md` model of who you are; an opt-in per-turn review and an N-day skill curator keep it sharp.
 
-```bash
-brew install ffmpeg whisper-cpp coreutils
-```
+## Autonomous coding
 
-The installer checks all of it and downloads the ~142 MB local speech model on first run. Sign in to Claude Code once before you start Urfael.
+> [!WARNING]
+> The `/goal` loop can edit and commit code on its own. It runs with caps, timeouts, kill-switches, and **never pushes** — but for anything beyond a trusted local repo, use `--sandbox docker` (throwaway, `--network none`, no secrets mounted) or `--sandbox ssh` (a remote box). Supervise the first run.
 
-The brain uses Claude Code's model aliases, so it always tracks the latest models your plan supports. Opus escalation needs a **Max** plan; on **Pro**, set `URFAEL_OPUS_MODEL=sonnet` to keep everything on Sonnet (see [docs/SETUP.md](docs/SETUP.md)).
+Hand off long work to detached, cancellable background jobs (autonomous coding, deep research) that don't tie up the conversation and push your phone when done.
 
-### Linux
+## Cost
 
-macOS is the primary, best-tested target. Linux is **newer and less battle-tested**, but the headless brain core and the Electron GUI run there too: notifications go through `notify-send`, local TTS through `espeak-ng`/`spd-say`, screenshots through `grim`/`scrot`/`maim`/`import`, and the always-on daemon through a `systemd --user` unit instead of launchd. ElevenLabs/whisper.cpp work unchanged.
+It runs on a flat-rate subscription, so there's nothing to meter — but you can still see usage. Token counts and an **estimated** daily/7-day/30-day spend (rate is env-overridable, never asserted as fact) show up in the Console's Hearth panel, the dashboard, and `urfael status`.
 
-```bash
-sudo apt install ffmpeg espeak-ng libnotify-bin grim   # + build whisper.cpp (whisper-server) yourself
-systemctl --user enable --now urfael-daemon            # start the always-on brain
-cd app && npm start
-```
+## What's lightly tested
 
-Swap `grim` for `scrot`/`maim`/`imagemagick` on X11. `install.sh` detects Linux and installs the `systemd --user` units for you (start with `systemctl --user enable --now urfael-daemon`; see [docs/SETUP.md](docs/SETUP.md)).
+Honesty is a feature here, so this section exists. As of now:
 
-## A note on power
+- **Every feature is verified end-to-end** by an in-repo harness (`npm run e2e`) against a live daemon: streamed conversation, abort + recovery, ranked recall, reminders firing, jobs completing, the heartbeat, all CLI commands, the dashboard's full attack battery, voice synthesis, all 8 bridges degrading cleanly, and the skill-hub SSRF refusal + scanner — plus 44 unit tests, several of them adversarial security regressions.
+- **Not yet exercised against real accounts:** the live relay of the Matrix, Signal, and WhatsApp bridges (their pure parsing/allowlist logic *is* unit-tested). Treat them as code-complete and reviewed, not battle-hardened.
+- **Linux is newer than macOS.** The headless core, voice, and GUI run there, but it has far less mileage.
+- **Real-world scale is small.** This is a personal tool, honestly stated — not a 100k-deployment veteran. That's the one thing only time and users add.
 
-When you opt into full capability with `URFAEL_YOLO=1`, Urfael becomes a real agent with shell, file, and network access that also reads untrusted email and web. Run that mode in a VM or a throwaway account, and read [SECURITY.md](SECURITY.md) first.
+## Who this is *not* for
+
+If you want 20 chat channels and any model under the sun, use OpenClaw or Hermes — they're excellent at breadth. If you want the **smallest possible blast radius**, a **flat bill**, **local voice**, and a tool that's **straight with you about its limits**, stay.
 
 ## The name
 
@@ -119,7 +219,7 @@ Urfael is an original character: an old intelligence sworn to one person, woken 
 
 ## Contributing
 
-Issues and PRs welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Especially wanted: a Windows port, hardening of the Linux paths (they're newer), more local-voice backends, and new MCP hands. The newer bridges (Matrix, Signal, WhatsApp) are code-complete and reviewed but lightly field-tested — real-world reports help.
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Especially wanted: a hero demo GIF, a Windows port, hardening of the (newer) Linux paths, real-world reports on the Matrix/Signal/WhatsApp bridges, more local-voice backends, and new MCP hands.
 
 ## License
 
@@ -127,4 +227,4 @@ Issues and PRs welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Especially wante
 
 <sub>An independent open-source project, not affiliated with, endorsed by, or sponsored by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.</sub>
 
-<div align="center"><sub>If it's useful, a star helps others find it.</sub></div>
+<div align="center"><sub>If it earns its place on your machine, a star helps others find it.</sub></div>
