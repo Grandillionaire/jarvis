@@ -70,11 +70,13 @@ class Session {
       '-p', '--input-format', 'stream-json', '--output-format', 'stream-json',
       '--model', this.model, '--verbose', '--include-partial-messages', '--permission-mode', PERM_MODE,
     ], { cwd: VAULT, env: { ...process.env, URFAEL_OVERLAY: '1' }, stdio: ['pipe', 'pipe', 'ignore'] });
-    recordBrainPid(this.proc.pid);
-    this.proc.stdout.on('data', (d) => this._onData(d));
-    this.proc.on('exit', () => { logEvent({ ev: 'brain_exit', model: this.model }); this.proc = null; if (this.current) { this.current.cb('(restarted — try again)'); this.current = null; } });
-    this.proc.on('error', (e) => { // spawn failure (claude missing / bad cwd) must never crash the daemon
+    const p = this.proc; // bind handlers to THIS proc identity so a stale exit can't clobber a freshly-spawned one
+    recordBrainPid(p.pid);
+    p.stdout.on('data', (d) => this._onData(d));
+    p.on('exit', () => { logEvent({ ev: 'brain_exit', model: this.model }); if (this.proc !== p) return; this.proc = null; if (this.current) { this.current.cb('(restarted — try again)'); this.current = null; } });
+    p.on('error', (e) => { // spawn failure (claude missing / bad cwd) must never crash the daemon
       logEvent({ ev: 'brain_spawn_error', model: this.model, err: String((e && e.message) || e) });
+      if (this.proc !== p) return;
       this.proc = null;
       if (this.current) { const c = this.current; this.current = null; clearTimeout(c.timer); c.cb('(brain spawn failed — is claude installed?)'); }
     });
@@ -153,6 +155,7 @@ class Session {
   // discard it, resolve the waiter with '(stopped)', then drain the queue. No-op when idle.
   abort() {
     if (!this.current) return false;
+    if (this.speakCur && !this.spokenDone) { this.spokenDone = true; sendSay({ end: true, turnId: this.curTurn }); } // cleanly end the dangling spoken stream
     const c = this.current; this.current = null; clearTimeout(c.timer);
     try { this.proc && this.proc.kill('SIGKILL'); } catch {} this.proc = null; // discard the killed process
     c.cb('(stopped)'); this._next();
@@ -182,9 +185,11 @@ const brain = {
     const ms = Date.now() - t0;
     const u = session.lastUsage || {};
     logEvent({ ev: 'turn', model, in: text.length, out: (reply || '').length, ms, tokIn: u.input_tokens || 0, tokOut: u.output_tokens || 0, tokCache: u.cache_read_input_tokens || 0 });
-    transcript.push({ user: text, urfael: reply });
-    recordSession({ t: new Date().toISOString(), channel: 'local', model, user: text, urfael: reply, ms });
-    return { text: reply, model, ms };
+    if (reply !== '(stopped)') {   // don't persist an aborted turn into the transcript/archive or feed it to distill
+      transcript.push({ user: text, urfael: reply });
+      recordSession({ t: new Date().toISOString(), channel: 'local', model, user: text, urfael: reply, ms });
+    }
+    return { text: reply, model, ms, aborted: reply === '(stopped)' };
   },
   endConversation() { convoModel = MODELS.sonnet; softTurns = 0; },
   // Abort the current LOCAL turn across the warm sessions. Touches only the serialized `sessions` map —

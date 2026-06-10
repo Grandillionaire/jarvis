@@ -51,7 +51,8 @@ function dockBadge() { if (app.dock && process.platform === 'darwin') app.dock.s
 function askDaemon(text) {
   askInFlight++; dockBadge();
   return new Promise(async (resolve) => {
-    const finish = (v) => { askInFlight = Math.max(0, askInFlight - 1); dockBadge(); resolve(v); };
+    let settled = false;
+    const finish = (v) => { if (settled) return; settled = true; askInFlight = Math.max(0, askInFlight - 1); dockBadge(); resolve(v); }; // idempotent: error+end can both fire
     if (!(await ensureDaemon())) { finish({ ok: false, text: '(brain offline)', model: '' }); return; }
     let done = false;
     const req = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' } }, (res) => {
@@ -71,7 +72,7 @@ function askDaemon(text) {
       res.on('end', () => { if (!done) finish({ ok: true, text: '', model: '' }); });
     });
     req.on('error', () => { if (!done) finish({ ok: false, text: '(brain unreachable)', model: '' }); });
-    req.write(JSON.stringify({ text })); req.end();
+    try { req.write(JSON.stringify({ text })); req.end(); } catch { finish({ ok: false, text: '(brain unreachable)', model: '' }); } // a sync throw must still settle (and clear the badge)
   });
 }
 function daemonPost(p) { try { const req = http.request({ socketPath: SOCK, method: 'POST', path: p }, (res) => res.resume()); req.on('error', () => {}); req.end(); } catch {} }
@@ -247,7 +248,14 @@ function toggle() {
 // ---- native menu bar -------------------------------------------------------
 // App-action items send 'urfael:menu' (an action string) to the focused window; the Console renderer
 // consumes it via window.urfael.onMenu. Edit/Window roles stay native.
-function menuSend(action) { const w = BrowserWindow.getFocusedWindow() || consoleWin; if (w && !w.isDestroyed()) w.webContents.send('urfael:menu', action); }
+// Console-bound actions (views, new, settings, stop) always target the Console even when the orb is
+// focused — opening it if needed; window-agnostic actions go to the focused window.
+function menuSend(action) {
+  const consoleBound = action.startsWith('view:') || ['new', 'settings', 'stop'].includes(action);
+  let w = consoleBound ? (consoleWin && !consoleWin.isDestroyed() ? consoleWin : null) : BrowserWindow.getFocusedWindow();
+  if (consoleBound && !w) { createConsole(); w = consoleWin; }
+  if (w && !w.isDestroyed()) w.webContents.send('urfael:menu', action);
+}
 function toggleOrb() { if (win && !win.isDestroyed()) toggle(); else { createWindow(); win.once('ready-to-show', () => { win.showInactive(); win.show(); }); } }
 function buildMenu() {
   const tpl = [
@@ -278,6 +286,7 @@ function buildMenu() {
       { label: 'Hearth', accelerator: 'CmdOrCtrl+5', click: () => menuSend('view:hearth') },
       { label: 'Settings', accelerator: 'CmdOrCtrl+6', click: () => menuSend('view:settings') },
       { type: 'separator' },
+      { label: 'Stop Generation', accelerator: 'CmdOrCtrl+.', click: () => menuSend('stop') },
       { label: 'Toggle Orb HUD', click: () => { toggleOrb(); menuSend('toggle-orb'); } },
       { role: 'reload' },
       { role: 'toggleDevTools' },

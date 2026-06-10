@@ -370,7 +370,7 @@ Palette.init([
 // menu bar / dock actions forwarded from main.js (preload may not expose onMenu yet — consume defensively)
 if (window.urfael.onMenu) window.urfael.onMenu((a) => {
   if (typeof a !== 'string') return;
-  if (a.startsWith('view:')) show(a.slice(5));
+  if (a.startsWith('view:')) { const v = a.slice(5); if (VIEWS.includes(v)) show(v); }
   else if (a === 'new') newConversation();
   else if (a === 'settings') show('settings');
   else if (a === 'stop') abort();

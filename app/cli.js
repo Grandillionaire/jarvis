@@ -44,7 +44,8 @@ async function ensureDaemon() {
 function ask(text) {
   return new Promise((resolve) => {
     // Ctrl+C while a turn streams: stop the brain's in-flight turn, then leave cleanly.
-    const onSigint = () => { req('POST', '/abort').catch(() => {}).then(() => process.exit(0)); };
+    // race the abort against a short timer so a wedged daemon can't make Ctrl+C hang (req timeout is 5min)
+    const onSigint = () => { Promise.race([req('POST', '/abort').catch(() => {}), new Promise((r) => setTimeout(r, 1500))]).then(() => process.exit(0)); };
     process.on('SIGINT', onSigint);
     const done = () => { process.removeListener('SIGINT', onSigint); resolve(); };
     const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' } }, (res) => {
@@ -91,9 +92,10 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
 
   if (cmd === 'sessions') { if (rest[0] === 'search' && rest[1]) searchSessions(rest.slice(1).join(' ')); else console.log('usage: urfael sessions search <query>'); return; }
 
-  if (!(await ensureDaemon())) { console.error('✗ brain offline and could not be started'); process.exit(1); }
-
+  // stop is best-effort BEFORE ensureDaemon — never spawn a brain just to abort nothing
   if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }
+
+  if (!(await ensureDaemon())) { console.error('✗ brain offline and could not be started'); process.exit(1); }
   if (cmd === 'health') { console.log(JSON.stringify(await req('GET', '/health'))); return; }
   if (cmd === 'shutdown') { await req('POST', '/shutdown').catch(() => {}); console.log('brain stopped'); return; }
   if (cmd === 'status') {

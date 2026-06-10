@@ -163,6 +163,7 @@ function answerForScreen(t) {
   return t.replace(/\[\/?SPOKEN\]/gi, '').trim();        // no tags (fallback) → show all
 }
 window.urfael.onDone((p) => {
+  if (p && p.aborted) { resolvePendingRows(); scheduleCollapse(); return; } // barge/stop: don't paint '(stopped)' over the panel
   resolvePendingRows();
   const full = answerForScreen((p && p.text) || respText);
   responseEl.textContent = full.slice(0, 1400);

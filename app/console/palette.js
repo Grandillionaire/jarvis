@@ -73,6 +73,7 @@ const Palette = (() => {
     else if (e.key === 'ArrowDown') { e.preventDefault(); if (shown.length) { sel = (sel + 1) % shown.length; render(); } }
     else if (e.key === 'ArrowUp') { e.preventDefault(); if (shown.length) { sel = (sel - 1 + shown.length) % shown.length; render(); } }
     else if (e.key === 'Enter') { e.preventDefault(); choose(sel); }
+    else if (e.key === 'Tab') { e.preventDefault(); } // focus-trap: the input is the only focusable; never let Tab escape the modal
   }
   function choose(i) {
     const c = shown[i]; if (!c) return;
@@ -83,6 +84,8 @@ const Palette = (() => {
   function open_() {
     if (open) return;
     open = true; lastFocus = document.activeElement;
+    document.getElementById('side')?.setAttribute('aria-hidden', 'true'); // truly modal for assistive tech
+    document.getElementById('main')?.setAttribute('aria-hidden', 'true');
     sel = 0; input.value = ''; root.hidden = false;
     filter();
     input.focus();
@@ -90,6 +93,8 @@ const Palette = (() => {
   function close() {
     if (!open) return;
     open = false; root.hidden = true;
+    document.getElementById('side')?.removeAttribute('aria-hidden');
+    document.getElementById('main')?.removeAttribute('aria-hidden');
     if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch {} }
     lastFocus = null;
   }
