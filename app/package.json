@@ -1,11 +1,12 @@
 {
   "name": "urfael-app",
   "version": "0.1.0",
-  "description": "Urfael — voice overlay, brain daemon, and CLI on Claude Code + Obsidian",
+  "description": "Urfael \u2014 voice overlay, brain daemon, and CLI on Claude Code + Obsidian",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "e2e": "node test/e2e.js"
   },
   "devDependencies": {
     "electron": "^33.2.0"
