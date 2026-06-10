@@ -58,16 +58,17 @@ Everything below is opt-in and guard-railed. Urfael ships without unrestricted p
 - **Memory that compounds.** The vault holds its knowledge; a private git repo holds what it learns. Each conversation auto-distills into durable memory, lessons from its mistakes, and a model of who you are (`USER.md`) — all re-read every session.
 - **Skills.** When it figures out a multi-step procedure, it writes the recipe to `_urfael/skills/` and follows it next time instead of reasoning from scratch. Skills proven wrong get fixed or deleted — it curates itself.
 - **Total recall.** Every conversation, from every surface, is archived as plain JSONL in your memory repo. "What did I say about the Berlin trip?" — it greps its own history and cites the date. `urfael sessions search <query>` from any terminal.
-- **A terminal voice.** The same brain answers in your shell: `urfael "summarize my inbox"` streams the answer live; `status`, `jobs`, `reminders`, `remind`, `sessions search` manage the rest. One daemon, every surface.
+- **A terminal voice.** The same brain answers in your shell: `urfael "summarize my inbox"` streams live; `status`, `jobs`, `reminders`, `remind`, `sessions search`, `stop`, `dashboard` manage the rest. Ctrl+C stops a turn. One daemon, every surface.
+- **A web console.** `urfael dashboard` opens a token-gated localhost page (bound to 127.0.0.1 only, constant-time token, no path serving) — the browser surface Hermes and OpenClaw have, locked down harder.
 - **Reminders.** "Remind me in 20 minutes" / "every morning at 8" just works — persisted in the daemon, fired as a notification, spoken aloud, and pushed to your phone, with every window closed.
 - **Heartbeat (opt-in).** Every N minutes it runs your `HEARTBEAT.md` checklist — upcoming events, urgent email, slipping deadlines — and stays silent unless something genuinely needs you.
 - **Calendar and email.** Read, create, and update Google and Apple Calendar plus Reminders. Drafts email, never sends.
 - **Hands and eyes.** Drives the browser with Playwright, controls macOS apps, windows, and files, and sees the screen.
 - **Visuals.** Ask for a chart or diagram and it makes one, in matplotlib, Mermaid, or interactive HTML.
 - **Morning brief.** A spoken 8am rundown of your calendar, inbox, and open loops, with no window open.
-- **Phone control.** Drive it from Telegram or Discord, owner-allowlisted — text or **voice memos** (transcribed locally on your Mac, never by a cloud STT). Remote turns are sandboxed and read-only by default — a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in).
+- **Phone control.** Drive it from Telegram, Discord, Slack, or iMessage — owner-allowlisted, text or **voice memos** (transcribed locally on your Mac, never by a cloud STT). Remote turns are sandboxed and read-only by default — a message can read and search your vault, but can't write files, run shell, fetch the network, or touch your machine (web lookup and capture are opt-in).
 - **Background jobs.** Hand off long work (autonomous coding, deep research) to detached, cancellable jobs that don't tie up the conversation and push your phone when they're done.
-- **Autonomous coding.** A `/goal` loop with caps, timeouts, and kill-switches. It never pushes.
+- **Autonomous coding.** A `/goal` loop with caps, timeouts, and kill-switches — optionally inside a throwaway `--network none` Docker container (only the claude auth files are staged in, never your secrets). It never pushes.
 
 ## Voice
 

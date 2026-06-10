@@ -29,6 +29,8 @@ function argvFor(job) {
     if (s.turnTimeout) args.push('--turn-timeout', String(s.turnTimeout));
     if (s.check) args.push('--check', String(s.check));
     if (s.model) args.push('--model', String(s.model));
+    // Optional throwaway-container isolation. Whitelist server-side; goal-loop.sh re-validates + needs docker.
+    if (s.sandbox === 'docker' || s.sandbox === 'docker-net') args.push('--sandbox', s.sandbox);
     return args;
   }
   // ask / research: sandboxed one-shot — no bypass, no computer-use, write a result note into the vault.

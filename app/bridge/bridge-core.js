@@ -89,6 +89,34 @@ async function discordDM(token, userId, text) {
     headers: { Authorization: `Bot ${token}`, 'Content-Type': 'application/json' } }, { content: (text || '(empty)').slice(0, 1900) });
 }
 
+// Slack Web API call with a bearer token (app-level token for apps.connections.open, bot token for chat.postMessage).
+function slackApi(token, method, body) {
+  return httpsJson({ hostname: 'slack.com', path: '/api/' + method, method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json; charset=utf-8' } }, body || {});
+}
+
+// Post a Slack message. `channel` may be a DM channel id or a user id (Slack opens the DM either way).
+function slackPost(botToken, channel, text) {
+  return slackApi(botToken, 'chat.postMessage', { channel, text: (text || '(empty)').slice(0, 3900) });
+}
+
+// Send an iMessage to the owner handle via AppleScript (macOS only). Best-effort; rejects if osascript fails.
+function imessageSend(handle, text) {
+  return new Promise((resolve, reject) => {
+    const { execFile } = require('child_process');
+    const script = 'on run argv\n'
+      + 'set h to item 1 of argv\n'
+      + 'set m to item 2 of argv\n'
+      + 'tell application "Messages"\n'
+      + 'set svc to 1st account whose service type = iMessage\n'
+      + 'set bud to participant h of svc\n'
+      + 'send m to bud\n'
+      + 'end tell\n'
+      + 'end run';
+    execFile('osascript', ['-e', script, handle, (text || '(empty)').slice(0, 3900)], { timeout: 30000 }, (err) => err ? reject(err) : resolve());
+  });
+}
+
 // Download a small file over https to a temp path (voice memos). Capped size, fail-closed.
 function httpsDownload(url, dest, maxBytes = 20 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -130,6 +158,8 @@ async function notifyAll(text) {
   const cfg = loadEnv();
   if (cfg.TELEGRAM_BOT_TOKEN && cfg.TELEGRAM_OWNER_CHAT_ID) { try { await telegramSend(cfg.TELEGRAM_BOT_TOKEN, cfg.TELEGRAM_OWNER_CHAT_ID, text); } catch {} }
   if (cfg.DISCORD_BOT_TOKEN && cfg.DISCORD_OWNER_USER_ID) { try { await discordDM(cfg.DISCORD_BOT_TOKEN, cfg.DISCORD_OWNER_USER_ID, text); } catch {} }
+  if (cfg.SLACK_BOT_TOKEN && cfg.SLACK_OWNER_USER_ID) { try { await slackPost(cfg.SLACK_BOT_TOKEN, cfg.SLACK_OWNER_USER_ID, text); } catch {} }
+  if (process.platform === 'darwin' && cfg.IMESSAGE_OWNER_HANDLE) { try { await imessageSend(cfg.IMESSAGE_OWNER_HANDLE, text); } catch {} }
 }
 
-module.exports = { JDIR, SOCK, ENVF, AUDIT, loadEnv, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, notifyAll, httpsDownload, transcribeLocal };
+module.exports = { JDIR, SOCK, ENVF, AUDIT, loadEnv, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };

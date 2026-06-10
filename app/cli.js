@@ -8,6 +8,7 @@
 //   urfael reminders                           list reminders
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
+//   urfael dashboard                           open the token-gated localhost web console (prints the URL)
 //   urfael stop                                abort the current in-flight turn (also: Ctrl+C while asking)
 //   urfael health | shutdown
 const http = require('http');
@@ -19,6 +20,8 @@ const { spawn, execFileSync } = require('child_process');
 const SOCK = path.join(os.homedir(), '.claude', 'urfael', 'daemon.sock');
 const MEMORY_DIR = path.join(os.homedir(), process.env.URFAEL_MEMORY_DIR || 'Urfael-memory');
 const DAEMON = path.join(__dirname, 'daemon.js');
+const DASHBOARD = path.join(__dirname, 'dashboard.js');
+const TOKENF = path.join(os.homedir(), '.claude', 'urfael', 'dashboard.token');
 const gold = (s) => `\x1b[33m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
@@ -94,6 +97,19 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
 
   // stop is best-effort BEFORE ensureDaemon — never spawn a brain just to abort nothing
   if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }
+
+  // dashboard: ensure the standalone localhost console is up (spawn detached if not), then print its tokened URL.
+  // Runs BEFORE ensureDaemon — the dashboard manages its own lifecycle and proxies the brain on demand.
+  if (cmd === 'dashboard') {
+    const port = parseInt(process.env.URFAEL_DASHBOARD_PORT, 10) || 7717;
+    const up = () => new Promise((r) => { const s = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', timeout: 800 }, (res) => { res.resume(); r(true); }); s.on('error', () => r(false)); s.on('timeout', () => { s.destroy(); r(false); }); s.end(); });
+    if (!(await up())) { try { const p = spawn(process.execPath, [DASHBOARD], { detached: true, stdio: 'ignore' }); p.unref(); } catch {} for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 300)); if (await up()) break; } }
+    let tok = ''; try { tok = fs.readFileSync(TOKENF, 'utf8').trim(); } catch {}
+    if (!tok) { console.error('✗ dashboard not reachable (no token yet)'); process.exit(1); }
+    console.log(gold(`http://127.0.0.1:${port}/?token=${tok}`));
+    console.log(dim('  localhost only · token-gated · open this URL in your browser'));
+    return;
+  }
 
   if (!(await ensureDaemon())) { console.error('✗ brain offline and could not be started'); process.exit(1); }
   if (cmd === 'health') { console.log(JSON.stringify(await req('GET', '/health'))); return; }
