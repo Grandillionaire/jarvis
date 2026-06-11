@@ -25,7 +25,13 @@
   .btn:hover{background:rgba(212,168,90,.18);color:#fff}
   .btn.primary{background:rgba(212,168,90,.16);border-color:rgba(212,168,90,.45)}
   /* hero */
-  header{padding:64px 0 12px;background:radial-gradient(circle at 50% 0%,rgba(212,168,90,.07),transparent 60%)}
+  header{position:relative;overflow:hidden;padding:88px 0 12px;background:radial-gradient(circle at 50% 0%,rgba(212,168,90,.09),transparent 60%)}
+  #rain{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.92;
+    -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.95) 0%,rgba(0,0,0,.7) 46%,transparent 80%);
+            mask-image:linear-gradient(to bottom,rgba(0,0,0,.95) 0%,rgba(0,0,0,.7) 46%,transparent 80%)}
+  .hero-veil{position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse 62% 56% at 50% 40%,rgba(13,12,10,.94) 0%,rgba(13,12,10,.66) 42%,transparent 76%)}
+  header .wrap{position:relative;z-index:2}
   header .rune{height:74px;opacity:.92;filter:drop-shadow(0 0 14px rgba(212,168,90,.4))}
   header h1{font-size:13px;letter-spacing:11px;color:var(--gold);margin:14px 0 4px;font-variant:small-caps}
   header .words{height:22px;margin:4px 0 18px;opacity:.85;filter:drop-shadow(0 0 6px rgba(212,168,90,.4))}
@@ -56,6 +62,8 @@
 </head>
 <body>
 <header class="center">
+  <canvas id="rain" aria-hidden="true"></canvas>
+  <div class="hero-veil" aria-hidden="true"></div>
   <div class="wrap">
     <img class="rune" src="media/urfael-logo.svg" alt="Urfael — the Uruz rune" />
     <h1>U R F A E L</h1>
@@ -158,5 +166,54 @@ cd app &amp;&amp; npm start # the Console opens</pre>
     "Claude" and "Claude Code" are trademarks of Anthropic.
   </div>
 </footer>
+<script>
+// Rune rain — the Matrix-rain effect, rebuilt with the Elder Futhark runes Urfael is built from.
+// Gold-on-dark; glyphs biased toward U-R-F-A-E-L so the cascade quietly spells the name. Behind the hero,
+// under a center vignette + bottom fade so the headline stays crisp. 30fps-capped, pauses off-screen,
+// honors prefers-reduced-motion.
+(function () {
+  var c = document.getElementById('rain'); if (!c || !c.getContext) return;
+  var ctx = c.getContext('2d'); var header = document.querySelector('header');
+  var RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ'.split('');
+  var BRAND = 'ᚢᚱᚠᚨᛖᛚ'.split('');                 // Uruz-Raido-Fehu-Ansuz-Ehwaz-Laguz = URFAEL
+  var MONO = '"SF Mono",ui-monospace,Menlo,monospace';
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var W, H, dpr, fs, cols, drops, speeds, raf = 0, paused = false, last = 0;
+  function pick() { return Math.random() < 0.20 ? BRAND[(Math.random() * BRAND.length) | 0] : RUNES[(Math.random() * RUNES.length) | 0]; }
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = header.clientWidth; H = header.clientHeight;
+    c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fs = Math.max(15, Math.round(W / 72)); cols = Math.ceil(W / fs);
+    drops = []; speeds = [];
+    for (var i = 0; i < cols; i++) { drops[i] = Math.random() * (H / fs) - 4; speeds[i] = 0.22 + Math.random() * 0.45; } // seed across the field → full density immediately
+  }
+  function frame() {
+    ctx.fillStyle = 'rgba(13,12,10,0.085)'; ctx.fillRect(0, 0, W, H);  // fade the field → longer trailing tails
+    ctx.font = fs + 'px ' + MONO; ctx.textAlign = 'center';
+    for (var i = 0; i < cols; i++) {
+      var x = i * fs + fs / 2, y = drops[i] * fs;
+      if (y > 0 && y < H + fs) {
+        ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(178,128,58,0.5)'; ctx.fillText(pick(), x, y - fs); // dim trailing glyph
+        ctx.shadowColor = 'rgba(212,168,90,0.9)'; ctx.shadowBlur = 10; ctx.fillStyle = '#f4e3b8';     // bright head + glow
+        ctx.fillText(pick(), x, y); ctx.shadowBlur = 0;
+      }
+      drops[i] += speeds[i];
+      if (y > H && Math.random() > 0.972) { drops[i] = Math.random() * -20; speeds[i] = 0.22 + Math.random() * 0.45; }
+    }
+  }
+  function staticField() {                                            // reduced-motion: a calm sparse scatter, no animation
+    ctx.clearRect(0, 0, W, H); ctx.font = fs + 'px ' + MONO; ctx.textAlign = 'center';
+    for (var i = 0; i < cols; i++) { var n = (Math.random() * 5) | 0; for (var k = 0; k < n; k++) { ctx.fillStyle = 'rgba(178,128,58,' + (0.10 + Math.random() * 0.22) + ')'; ctx.fillText(pick(), i * fs + fs / 2, Math.random() * H); } }
+  }
+  function loop(t) { if (paused) { raf = 0; return; } raf = requestAnimationFrame(loop); if (t - last < 33) return; last = t; frame(); }
+  function ensure() { if (!raf && !paused && !reduce) raf = requestAnimationFrame(loop); }
+  function start() { resize(); if (reduce) staticField(); else { raf = 0; ensure(); } }
+  var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(start, 160); });
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { es.forEach(function (e) { paused = !e.isIntersecting; if (!paused) ensure(); }); }).observe(header);
+  start();
+})();
+</script>
 </body>
 </html>
