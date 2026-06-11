@@ -110,7 +110,7 @@
       <tr><td>Flat-rate cost (no per-token)</td><td class="y">✅ subscription</td><td class="n">❌ per-token</td><td class="n">❌ per-token</td></tr>
       <tr><td>OpenAI-compatible API</td><td class="y">✅</td><td class="y">✅</td><td class="w">⚠️</td></tr>
       <tr><td>Chat-channel breadth</td><td class="w">⚠️ 8, curated</td><td class="y">✅ many</td><td class="y">✅ 20+</td></tr>
-      <tr><td>Model flexibility</td><td class="w">⚠️ Claude, by design</td><td class="y">✅ 200+</td><td class="y">✅ many</td></tr>
+      <tr><td>Model flexibility</td><td class="w">⚠️ Claude-first; local-GPU via proxy</td><td class="y">✅ 200+</td><td class="y">✅ many</td></tr>
       <tr><td>Battle-tested at scale</td><td class="w">⚠️ small, & we say so</td><td class="y">✅ large</td><td class="y">✅ very large</td></tr>
     </table>
     <p class="cap">We win where it counts for a machine that lives on your desk and acts for you: blast radius, cost predictability, and not overstating maturity.</p>
@@ -134,6 +134,7 @@
     <pre>git clone https://github.com/Grandillionaire/urfael.git &amp;&amp; cd urfael
 ./install.sh        # checks deps, scaffolds your vault — no keys
 cd app &amp;&amp; npm start # the Console opens</pre>
+    <p><b style="color:var(--gold-soft)">Or run it 100% on your own GPU</b> — a local model (Ollama / NVIDIA NIM) + local voice means nothing leaves the machine. <a href="LOCAL-GPU.md">Guide</a>.</p>
     <p>It runs entirely on <i>your own</i> <span class="mono">claude</span> login — no credentials bundled or pooled, for ordinary individual use. Full guide: <a href="SETUP.md">docs/SETUP.md</a>.</p>
     <p class="center" style="margin-top:24px"><a class="btn primary" href="https://github.com/Grandillionaire/urfael">★ Star it on GitHub</a></p>
   </section>

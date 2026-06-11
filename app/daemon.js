@@ -56,6 +56,23 @@ const MAX_SPOKEN_CHARS = 700;     // hard cap on voiced text per turn — the sp
 const TURN_TIMEOUT_MS = Math.min(Math.max(parseInt(process.env.URFAEL_TURN_TIMEOUT_S, 10) || 120, 30), 900) * 1000; // per-turn watchdog (long work belongs in /job)
 let distilling = false;           // single-flight guard for the memory-distill pass
 
+// Build the MINIMAL env for a sandboxed one-shot child (remote turns, cron): PATH/HOME + our model knobs +
+// the backend-ROUTING vars, so "run Urfael on a local GPU / Bedrock / Vertex / a proxy" works on EVERY path,
+// not just the warm session. We forward the model-ACCESS credential (the child must reach the model to work,
+// exactly as the warm session does) but NOT the daemon's unrelated secrets (bridge.env etc.) — and the
+// untrusted profile has no egress tool, so a credential in the child's env can't be exfiltrated anyway.
+const PROVIDER_ENV = ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_SMALL_FAST_MODEL', 'ANTHROPIC_CUSTOM_HEADERS', 'ANTHROPIC_BEDROCK_BASE_URL', 'ANTHROPIC_VERTEX_BASE_URL',
+  'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH', 'CLAUDE_CODE_SKIP_VERTEX_AUTH',
+  'AWS_REGION', 'AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK', 'CLOUD_ML_REGION', 'ANTHROPIC_VERTEX_PROJECT_ID', 'GOOGLE_APPLICATION_CREDENTIALS'];
+function scopedEnv() {
+  const env = { PATH: process.env.PATH, HOME: process.env.HOME, URFAEL_OVERLAY: '1' };
+  for (const k of ['URFAEL_SONNET_MODEL', 'URFAEL_OPUS_MODEL', 'URFAEL_CLAUDE_BIN', 'URFAEL_VAULT_DIR', ...PROVIDER_ENV]) if (process.env[k]) env[k] = process.env[k];
+  return env;
+}
+const LOCAL_MODE = !!process.env.ANTHROPIC_BASE_URL || process.env.CLAUDE_CODE_USE_BEDROCK === '1' || process.env.CLAUDE_CODE_USE_VERTEX === '1'; // not the default Anthropic cloud → cost meter is meaningless
+
 // the in-flight /ask response stream — brain events are written to it as NDJSON
 let active = null;
 function emit(o) { if (active) { try { active.write(JSON.stringify(o) + '\n'); } catch {} } }
@@ -219,10 +236,8 @@ const brain = {
         '<<<' + nonce + '>>>\n' + text + '\n<<<' + nonce + '>>>';
       const args = ['-p', payload, '--model', model, '--permission-mode', permMode,
         '--strict-mcp-config', '--output-format', 'json', '--allowedTools', profile.allowedTools.join(',')];
-      // minimal env: never hand the daemon's full environment (any tokens/secrets) to a sandboxed child.
-      const env = { PATH: process.env.PATH, HOME: process.env.HOME, URFAEL_OVERLAY: '1' };
-      for (const k of ['URFAEL_SONNET_MODEL', 'URFAEL_OPUS_MODEL', 'URFAEL_CLAUDE_BIN', 'URFAEL_VAULT_DIR']) if (process.env[k]) env[k] = process.env[k];
-      const proc = spawn(CLAUDE_BIN, args, { cwd: VAULT, env, stdio: ['ignore', 'pipe', 'ignore'] });
+      // minimal env (PATH/HOME + model knobs + backend routing): never the daemon's unrelated secrets.
+      const proc = spawn(CLAUDE_BIN, args, { cwd: VAULT, env: scopedEnv(), stdio: ['ignore', 'pipe', 'ignore'] });
       inflightScoped.add(proc); // tracked in-memory (killed on shutdown); NOT persisted to the brain killfile (avoids pid-reuse kills)
       let out = '';
       proc.stdout.on('data', (d) => { out += d.toString(); if (out.length > 5000000) out = out.slice(-5000000); });
@@ -292,9 +307,11 @@ function vitals() {
     try { n = parseInt(require('child_process').execFileSync('git', ['-C', MEMORY_DIR, 'rev-list', '--count', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(), 10) || 0; } catch {}
     memCommitCache = { t: Date.now(), n };
   }
-  // costToday is an ESTIMATE (env-overridable rates); rounded to cents. Only ADD fields here — the HUD
-  // depends on the existing /vitals shape, so this stays backward-compatible.
-  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, costToday: Math.round(costToday * 100) / 100, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+  // costToday is an ESTIMATE (env-overridable rates); rounded to cents. In LOCAL_MODE (a local-GPU model, a
+  // proxy, or Bedrock/Vertex on your own account) the Anthropic-rate meter is meaningless, so we zero it and
+  // flag `local: true` rather than show a fabricated dollar figure. Only ADD fields here — the HUD depends on
+  // the existing /vitals shape, so this stays backward-compatible.
+  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, costToday: LOCAL_MODE ? 0 : Math.round(costToday * 100) / 100, local: LOCAL_MODE, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
 }
 
 // ---- usage summary: tokens / turns / ESTIMATED cost over today / last 7d / last 30d ---------------
@@ -434,9 +451,8 @@ function deliverCron(job) {
     '<<<' + nonce + '>>>\n' + job.prompt + '\n<<<' + nonce + '>>>';
   const args = ['-p', prompt, '--model', MODELS.sonnet, '--permission-mode', 'acceptEdits',
     '--strict-mcp-config', '--output-format', 'json', '--allowedTools', CRON_ALLOWED_TOOLS];
-  // minimal env: never hand a scheduled child the daemon's full environment (any tokens/secrets).
-  const env = { PATH: process.env.PATH, HOME: process.env.HOME, URFAEL_OVERLAY: '1' };
-  for (const k of ['URFAEL_SONNET_MODEL', 'URFAEL_OPUS_MODEL', 'URFAEL_CLAUDE_BIN', 'URFAEL_VAULT_DIR']) if (process.env[k]) env[k] = process.env[k];
+  // minimal env (PATH/HOME + model knobs + backend routing): never the daemon's unrelated secrets.
+  const env = scopedEnv();
   let out = '', done = false;
   const finish = (txt) => {
     if (done) return; done = true; cronRunning = false;

@@ -130,6 +130,8 @@ Urfael drives the `claude` CLI and inherits your environment, so any backend Cla
 - **Claude on Amazon Bedrock / Google Vertex** — set `CLAUDE_CODE_USE_BEDROCK=1` (with `AWS_REGION` + creds) or `CLAUDE_CODE_USE_VERTEX=1`. Billed to your AWS/GCP.
 - **A custom gateway or any model via a proxy** — point `ANTHROPIC_BASE_URL` at a translating proxy ([claude-code-router](https://github.com/musistudio/claude-code-router), [LiteLLM](https://docs.litellm.ai/), or y-router) to reach GPT/Gemini/DeepSeek/Ollama/LM Studio. Claude Code speaks the Anthropic Messages API, so the proxy presents that shape and converts.
 
+**Run it 100% on your own GPU.** A local model (Ollama / LM Studio / NVIDIA NIM) via that same proxy, plus the already-local voice, means *nothing leaves the machine* — air-gapped, $0 marginal cost, same security model. Urfael forwards the routing to every path it spawns (live turns, chat, cron, heartbeat), so the whole system goes local, not just the foreground. Honest tradeoff: a local model isn't Claude-grade. Full guide: [docs/LOCAL-GPU.md](docs/LOCAL-GPU.md).
+
 One asymmetry to know: **non-Anthropic models run on your own provider keys — the Claude subscription only covers Anthropic models.** And if `ANTHROPIC_API_KEY` is in your environment it overrides the subscription. (Native, non-CLI provider support isn't a goal — it would mean abandoning the `claude`-CLI harness that keeps Urfael fast, free on your plan, and on the right side of Anthropic's terms.)
 
 ### Quick start
