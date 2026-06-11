@@ -1,0 +1,42 @@
+# The Urfael Security Benchmark
+
+> Most "secure" claims in this space are adjectives. This one is a command:
+>
+> ```bash
+> npm run security
+> ```
+>
+> It boots the real daemon and dashboard and attacks them the way the wild did — then prints a pass/fail
+> table. As of the latest run: **7/7 real-world attack classes resisted · 27/27 checks passed.**
+
+Self-hosted AI agents were not compromised hypothetically in 2026. They were compromised in production:
+
+- **OpenClaw CVE-2026-25253 ("ClawJacked", CVSS 8.8)** — a one-click RCE: a malicious web page leaked the gateway's auth token over a WebSocket, then drove the agent.
+- **20,000–42,000 OpenClaw gateways found publicly exposed** (Censys / Bitsight). China's CNCERT issued a national warning.
+- **ClawHub skill registry: ~20% of skills were malicious** — Atomic macOS Stealer, SSH-key / API-token / cookie exfiltration, typosquatting.
+- **Private-key exfiltration via a single poisoned email** delivered to a linked inbox.
+
+Urfael was designed against exactly these. The benchmark proves it, defense by defense, with the test you can read in [`app/test/security-benchmark.js`](../app/test/security-benchmark.js).
+
+## The scorecard
+
+| # | Attack class | What happened in the wild | Urfael's answer | Proven by |
+|---|---|---|---|---|
+| 1 | **Network exposure** | 20–42k OpenClaw gateways reachable from the internet | The brain listens on a **unix socket only** — zero TCP ports. The opt-in dashboard/API bind `127.0.0.1` only. | `lsof` shows 0 TCP listeners for the daemon; socket is `0600` |
+| 2 | **Auth-token leak → RCE** | ClawJacked leaked the gateway token to a malicious page | Tokens are **constant-time compared**, **never logged**, stored `0600`; cross-origin `Host` rejected (anti-rebinding); no token in any URL | wrong/empty/rebind requests → 401/400; token never appears in stdout |
+| 3 | **Prompt-injection exfiltration** | A poisoned email made the agent leak a private key | Remote turns run a **read-only profile** (Read/Grep/Glob — no shell, no write, **no network-egress tool**), wrapped in a nonce-framed untrusted envelope; channel resolution is **fail-closed** | 9 coercion attempts → `untrusted`; forged `From:` can't spoof the allowlist |
+| 4 | **Poisoned skill / supply chain** | ~20% of ClawHub skills were malware | Skills are **previewed + statically scanned** before install (curl\|sh, `--dangerously-skip-permissions`, exfil URLs, hidden unicode), **never auto-installed when flagged**, **never executed**; install refuses SSRF redirects; migrated foreign skills are scanned too | the scanner + `installFromUrl` SSRF guard + `--force` can't bypass the malware gate |
+| 5 | **Unauthenticated DoS / crash-loop** | A malformed request that crashes a restarted service is a remote no-auth DoS (we caught one in our *own* review) | Malformed input → 401/400, **not a crash**; bodies capped; rate-limited; no filesystem path from the URL | malformed cookie → 401, process survives; traversal → 404 |
+| 6 | **Secret theft by a runaway agent** | An agent with a shell + your secrets is one injection from reading them | The Docker sandbox **stages only the claude auth files** (never `bridge.env` / API keys) and is **`--network none`** by default | the goal-loop never mounts `~/.claude`; only a temp auth dir |
+| 7 | **Insecure defaults** | OpenClaw shipped `security:full` + `ask:off` on the host | The unrestricted shell is **off by default** (opt-in + logged); default mode is not bypass; an unknown channel gets the **most-restricted** profile | YOLO off; unknown channel → `untrusted` |
+
+## Why this is the differentiator
+
+OpenClaw and Hermes optimize for reach — channel count, model count, star count. None of the three ships a runnable proof that it resists the attacks that have actually compromised agents in the wild. Urfael does, because it was built blast-radius-first:
+
+- **The topology is one-way.** Urfael reaches *out* (to your `claude` login, to chat APIs it polls). Nothing reaches *in*. There is no gateway to expose, no token to leak over a socket, no DM endpoint to spray.
+- **Untrusted content is structurally contained,** not prompt-engineered into safety. A remote message physically cannot run a shell or hit the network, so "read a secret and POST it somewhere" has no egress to use.
+- **The supply chain is guilty until proven innocent.** A skill is inert markdown that gets scanned and shown to you before it's stored, and is never executed.
+- **The tests are adversarial and frozen.** Each defense above ships with a regression test built from a real finding (several from Urfael's own internal red-team), so a refactor can't silently reopen a hole.
+
+This is not a claim that Urfael is unbreakable — nothing is, and we keep a [`What's lightly tested`](../README.md#whats-lightly-tested) section on purpose. It is a claim that the specific, documented ways self-hosted agents got owned in 2026 are closed here, and that you can verify it in one command. See the formal [Threat Model](THREAT-MODEL.md) for the boundaries and the residual risks we *don't* cover.

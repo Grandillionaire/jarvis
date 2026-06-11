@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "e2e": "node test/e2e.js"
+    "e2e": "node test/e2e.js",
+    "security": "node test/security-benchmark.js"
   },
   "devDependencies": {
     "electron": "^33.2.0"

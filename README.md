@@ -14,6 +14,7 @@ It listens and speaks locally, sandboxes every autonomous action fail-closed, al
 [![Linux](https://img.shields.io/badge/Linux-newer-3a2d18?style=flat-square)](#install)
 [![No API key to start](https://img.shields.io/badge/API_key-not_required-7a5c28?style=flat-square)](#voice)
 [![No inbound port](https://img.shields.io/badge/inbound_port-none-2ea44f?style=flat-square)](#security)
+[![Security benchmark](https://img.shields.io/badge/security_benchmark-7%2F7_attack_classes-2ea44f?style=flat-square)](docs/SECURITY-BENCHMARK.md)
 [![License](https://img.shields.io/badge/license-MIT-9a7434?style=flat-square)](LICENSE)
 
 <br/>
@@ -91,6 +92,8 @@ The brain is a local daemon reachable only through a `0600` unix socket — **it
 - **Allowlist before the brain.** Every message from Telegram/Discord/Slack/iMessage/Email/Matrix/Signal/WhatsApp is checked against *your* id and dropped+audited otherwise — before a single token reaches the model. Remote turns run in a **read-only sandbox** (read + search your vault; no write, no shell, no network egress) and are wrapped in a nonce-framed untrusted-data envelope against prompt injection.
 - **Fail-closed everything.** An unknown channel resolves to the most-restricted profile, not the least. A malformed request is rejected, not guessed.
 - **Sandboxed autonomy.** The `/goal` loop runs on the host, in a throwaway `--network none` Docker container (only the `claude` auth files are staged in — never your `bridge.env`/API keys), or on a remote box over SSH.
+
+**Proof, not adjectives.** `npm run security` boots the real daemon + dashboard and attacks them the way self-hosted agents were attacked in the wild in 2026 (OpenClaw's ClawJacked token-leak RCE, 40k exposed gateways, the poisoned skill registry, prompt-injection key exfil, DoS). Latest run: **7/7 attack classes resisted, 27/27 checks**. See the [Security Benchmark](docs/SECURITY-BENCHMARK.md) and the formal [Threat Model](docs/THREAT-MODEL.md).
 
 > [!WARNING]
 > Full capability (`URFAEL_YOLO=1`) gives the agent an unrestricted shell that also reads untrusted email and web. Run that mode **only** in a VM, container, or throwaway account.
