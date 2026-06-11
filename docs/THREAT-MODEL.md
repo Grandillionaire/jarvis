@@ -36,6 +36,7 @@ control is verified. Paired with the runnable [Security Benchmark](SECURITY-BENC
 - **A widened sandbox.** If you add `WebFetch`/`Write` to the remote profile (documented as an opt-in widening) you re-open an egress/write path. The default is closed; widen deliberately.
 - **The model itself.** Urfael structurally prevents an injected instruction from *acting* (no egress, no shell on untrusted turns), but it can't guarantee the model never produces wrong text. The containment is structural, not behavioral.
 - **The connectors you enable.** Calendar/Gmail/desktop MCPs you turn on carry their own permissions; Urfael drafts email and never sends, but you own what you connect.
+- **The model provider you point at.** The sandbox is harness-enforced, so it holds whatever model answers — but the provider *processing* a turn inherently sees that turn. A **fully-local** model (Ollama/LM Studio on your box) means nothing leaves the machine; a **remote** proxy/provider (OpenRouter, a hosted endpoint) sees your prompts, exactly as using that API directly would. The sandbox stops the *agent* from exfiltrating beyond the turn; it can't unsee what you send it. Choose the provider accordingly.
 - **Scale.** This is a personal tool with a small user base — far less adversarial scrutiny than a 100k-deployment project. We say so plainly.
 
 ## Verification

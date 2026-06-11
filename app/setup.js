@@ -123,17 +123,24 @@ async function run() {
       p('  ' + ok('API-key mode set.') + ' ' + dim('Cost will show as a real per-token estimate in `urfael status`.'));
     } else {
       p('');
-      p('  ' + dim('Local / custom endpoint. Point Urfael at a proxy that speaks the Anthropic API'));
-      p('  ' + dim('(claude-code-router / LiteLLM in front of Ollama / NVIDIA NIM — see docs/LOCAL-GPU.md).'));
-      let url = '';
-      while (!/^https?:\/\//.test(url)) url = await io.ask('  Base URL ' + dim('(e.g. http://127.0.0.1:3456)') + ': ');
+      p('  ' + dim('Point Urfael at a proxy that speaks the Anthropic API (it sits in front of Ollama / LM Studio /'));
+      p('  ' + dim('NVIDIA NIM / OpenRouter — see docs/LOCAL-GPU.md). The sandbox + credential-deny hold whatever'));
+      p('  ' + dim('model answers (enforced by the harness, not the model). Pick a known proxy or enter a URL:'));
+      p('    ' + gold('1') + ')  claude-code-router  ' + dim('http://127.0.0.1:3456'));
+      p('    ' + gold('2') + ')  LiteLLM             ' + dim('http://127.0.0.1:4000'));
+      p('    ' + gold('3') + ')  Custom URL');
+      const PRESET = { '1': 'http://127.0.0.1:3456', '2': 'http://127.0.0.1:4000' };
+      let pick = ''; while (!['1', '2', '3'].includes(pick)) pick = await io.ask('  Choose ' + gold('[1-3]') + ' (Enter = 1): ') || '1';
+      let url = PRESET[pick] || '';
+      if (!url) { while (!/^https?:\/\//.test(url)) url = await io.ask('  Base URL ' + dim('(e.g. http://127.0.0.1:3456)') + ': '); }
+      else p('  ' + dim('using ' + url));
       next.ANTHROPIC_BASE_URL = url;
       next.ANTHROPIC_AUTH_TOKEN = (await io.ask('  Auth token ' + dim('(Enter = "local")') + ': ')) || 'local';
-      const om = await io.ask('  Map Opus tier to which local model? ' + dim('(Enter = skip)') + ': ');
-      const sm = await io.ask('  Map Sonnet tier to which local model? ' + dim('(Enter = skip)') + ': ');
+      const om = await io.ask('  Map the Opus tier to which model? ' + dim('(Enter = skip)') + ': ');
+      const sm = await io.ask('  Map the Sonnet tier to which model? ' + dim('(Enter = skip)') + ': ');
       if (om) next.URFAEL_OPUS_MODEL = om;
       if (sm) next.URFAEL_SONNET_MODEL = sm;
-      p('  ' + ok('Local mode set.') + ' ' + dim('Cost meter will read $0 (your own infra).'));
+      p('  ' + ok('Provider set.') + ' ' + dim('Any model now answers; the sandbox + guarantees are unchanged. Cost meter reads $0.'));
     }
 
     // 2b) optional: semantic recall (a local embeddings endpoint). Off by default → recall stays lexical BM25.
