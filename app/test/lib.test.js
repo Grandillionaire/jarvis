@@ -254,3 +254,42 @@ test('team: buildRoster tolerates junk and dedups ids (fail-soft)', () => {
   assert.equal(r.telegram[0].id, '1');
   assert.equal(r.telegram[1].role, 'guest', 'bogus role normalized to guest');
 });
+
+// ---- team.json editors (urfael team add/remove) ----
+const { addPrincipal, removePrincipal, TEAM_CHANNELS } = require('../lib');
+
+test('team add: adds a principal, defaults role to member-or-guest, dedups+updates by id', () => {
+  let { team, error } = addPrincipal({}, 'telegram', { id: '111', name: 'Maxim', role: 'owner' });
+  assert.equal(error, null);
+  assert.equal(team.telegram.length, 1);
+  assert.deepEqual(team.telegram[0], { id: '111', name: 'Maxim', role: 'owner' });
+  // a second id appends
+  ({ team } = addPrincipal(team, 'telegram', { id: '222', name: 'Sam' }));
+  assert.equal(team.telegram.length, 2);
+  assert.equal(team.telegram[1].role, 'guest'); // no role -> fail-closed guest
+  // re-adding the same id UPDATES, not duplicates
+  ({ team } = addPrincipal(team, 'telegram', { id: '111', name: 'Max', role: 'member' }));
+  assert.equal(team.telegram.length, 2);
+  assert.equal(team.telegram.find((p) => p.id === '111').role, 'member');
+});
+
+test('team add: rejects an unknown channel and a missing id (never throws, never mutates input)', () => {
+  const input = {};
+  assert.ok(/unknown channel/.test(addPrincipal(input, 'nope', { id: '1' }).error));
+  assert.ok(/id is required/.test(addPrincipal(input, 'telegram', {}).error));
+  assert.deepEqual(input, {}, 'input is not mutated');
+  for (const c of TEAM_CHANNELS) assert.equal(addPrincipal({}, c, { id: 'x', role: 'owner' }).error, null);
+});
+
+test('team remove: removes by id, reports removed, drops the channel when empty', () => {
+  const start = { telegram: [{ id: '111', role: 'owner' }, { id: '222', role: 'member' }] };
+  let { team, removed } = removePrincipal(start, 'telegram', '222');
+  assert.equal(removed, true);
+  assert.equal(team.telegram.length, 1);
+  // removing the last one drops the channel key
+  ({ team, removed } = removePrincipal(team, 'telegram', '111'));
+  assert.equal(removed, true);
+  assert.ok(!('telegram' in team));
+  // removing a non-member reports false
+  assert.equal(removePrincipal(start, 'telegram', '999').removed, false);
+});

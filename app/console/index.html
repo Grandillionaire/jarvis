@@ -133,7 +133,10 @@
       <div class="pane">
         <h2>Settings</h2>
         <div id="settings-grid"></div>
-        <p class="hint">Stored in <code>~/.claude/urfael/tts.env</code>. Keys (ElevenLabs, Picovoice) are edited there directly.</p>
+        <h3 class="sub-h">Provider</h3>
+        <p class="hint" style="margin-bottom:10px">How Urfael reaches Claude: <span id="provider-mode">…</span></p>
+        <button id="change-provider" class="row-act">Change provider…</button>
+        <p class="hint" style="margin-top:18px">Stored in <code>~/.claude/urfael/tts.env</code> and <code>provider.env</code>. Keys (ElevenLabs, Picovoice) are edited there directly.</p>
       </div>
     </section>
   </main>

@@ -35,6 +35,18 @@ const VIEWS = ['converse', 'archive', 'reminders', 'jobs', 'hearth', 'settings']
   (async () => { try { const s = await window.urfael.providerStatus(); if (s && !s.onboarded) ob.hidden = false; } catch {} })();
 })();
 
+// ---- Settings: change provider re-opens the onboarding card (handlers already wired above) ----
+(function providerSettings() {
+  const btn = $('#change-provider');
+  if (btn) btn.addEventListener('click', () => { const ob = $('#onboard'); if (ob) ob.hidden = false; });
+  if (window.urfael && window.urfael.providerStatus) {
+    window.urfael.providerStatus().then((s) => {
+      const el = $('#provider-mode'); if (!el || !s) return;
+      el.textContent = s.mode === 'apikey' ? 'an Anthropic API key' : s.mode === 'local' ? 'a local / custom model' : 'your Claude subscription';
+    }).catch(() => {});
+  }
+})();
+
 // ---- view switching --------------------------------------------------------
 let view = 'converse';
 function show(v) {

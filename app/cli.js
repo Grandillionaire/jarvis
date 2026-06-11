@@ -10,7 +10,7 @@
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
 //   urfael learn [trusted|proposed|retired]    the learning ledger — what it learned, verified, and pruned (with confidence)
-//   urfael team                                team roster — allowlisted principals per channel + roles (edit team.json)
+//   urfael team [add <channel> <id> [name] [role] | remove <channel> <id>]   manage the team roster (principals + roles)
 //   urfael audit [--json]                      team-mode activity trail (who/when/channel/sandbox) for an admin/auditor
 //   urfael cron [add "<prompt>" --daily-at HH:MM | --in N | --repeat daily] [list|cancel <id>|run <id>]
 //                                              scheduled AGENT jobs — runs the brain on a schedule, delivers the result
@@ -242,14 +242,35 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     return;
   }
   if (cmd === 'team') {
-    // show the team roster (per-channel allowlisted principals + roles). Read-only; edit ~/.claude/urfael/team.json.
+    // manage the team roster (allowlisted principals per channel + roles) at ~/.claude/urfael/team.json.
+    const lib = require('./lib');
     const TEAMF = path.join(os.homedir(), '.claude', 'urfael', 'team.json');
-    let team = {}; try { team = JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch {}
+    const readTeam = () => { try { return JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch { return {}; } };
+    const writeTeam = (t) => { fs.mkdirSync(path.dirname(TEAMF), { recursive: true }); fs.writeFileSync(TEAMF + '.tmp', JSON.stringify(t, null, 2) + '\n', { mode: 0o600 }); fs.renameSync(TEAMF + '.tmp', TEAMF); };
+    const sub = rest[0];
+    if (sub === 'add' && rest[1] && rest[2]) {
+      // urfael team add <channel> <id> [name] [role]
+      const [, channel, id, name, role] = rest;
+      const { team, error } = lib.addPrincipal(readTeam(), channel, { id, name: name || id, role });
+      if (error) { console.error('✗ ' + error); process.exit(1); }
+      const shownRole = /^(owner|member|guest)$/.test(role || '') ? role : 'guest';
+      writeTeam(team); console.log(gold('✓ added ') + id + dim(' to ' + channel + ' as ' + shownRole + '. Takes effect live.'));
+      return;
+    }
+    if ((sub === 'remove' || sub === 'rm') && rest[1] && rest[2]) {
+      const { team, removed } = lib.removePrincipal(readTeam(), rest[1], rest[2]);
+      if (!removed) { console.error('✗ ' + rest[2] + ' is not in the ' + rest[1] + ' roster'); process.exit(1); }
+      writeTeam(team); console.log(gold('✓ removed ') + rest[2] + dim(' from ' + rest[1]));
+      return;
+    }
+    if (sub === 'add' || sub === 'remove' || sub === 'rm') { console.log('usage: urfael team add <channel> <id> [name] [owner|member|guest]   ·   urfael team remove <channel> <id>'); return; }
+    // default: show the roster
+    const team = readTeam();
     const chans = Object.keys(team).filter((c) => Array.isArray(team[c]) && team[c].length);
-    if (!chans.length) { console.log(dim('single-owner mode — no team.json. To add teammates, create ' + TEAMF)); console.log(dim('  e.g. { "telegram": [ {"id":"111","name":"Maxim","role":"owner"}, {"id":"222","name":"Sam","role":"member"} ] }')); return; }
+    if (!chans.length) { console.log(dim('single-owner mode — no team.json yet.')); console.log(dim('  add a teammate:  ') + gold('urfael team add telegram <chat-id> "Sam" member')); return; }
     for (const c of chans) {
       console.log(gold(c));
-      for (const p of team[c]) { const role = p.role === 'owner' ? gold('owner ') : p.role === 'guest' ? dim('guest ') : 'member'; console.log(`  ${role}  ${dim(String(p.id).slice(0, 16).padEnd(16))}  ${p.name || ''}`); }
+      for (const p of team[c]) { const role = p.role === 'owner' ? gold('owner ') : p.role === 'guest' ? dim('guest ') : 'member'; console.log(`  ${role}  ${dim(String(p.id).slice(0, 18).padEnd(18))}  ${p.name || ''}`); }
     }
     return;
   }
