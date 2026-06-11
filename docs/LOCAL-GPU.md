@@ -83,6 +83,10 @@ holds; `npm run security` still passes 7/7. The model credential Urfael forwards
 just the local proxy's (often a dummy `local` token), and the untrusted profile has no tool to exfiltrate it
 with anyway.
 
+## Semantic recall (bonus of running a local model)
+
+If you already run Ollama/LM Studio for the brain, point Urfael at its embeddings endpoint too and recall upgrades from lexical to **semantic** — past turns surface by meaning, not just shared words. `urfael setup` asks for an optional `/v1/embeddings` URL (e.g. `http://127.0.0.1:11434/v1/embeddings`, model `nomic-embed-text`). It indexes locally, lazily, and **falls back to BM25** if the endpoint is down — nothing leaves the box.
+
 ## When to use which
 
 | | On your Claude subscription (default) | 100% local on your GPU |

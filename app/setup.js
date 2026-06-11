@@ -136,6 +136,22 @@ async function run() {
       p('  ' + ok('Local mode set.') + ' ' + dim('Cost meter will read $0 (your own infra).'));
     }
 
+    // 2b) optional: semantic recall (a local embeddings endpoint). Off by default → recall stays lexical BM25.
+    p('');
+    p('  ' + bold('Semantic recall?') + dim('   (optional) — surface past turns by MEANING, not just shared words.'));
+    p('  ' + dim('Needs a local OpenAI-compatible /v1/embeddings endpoint (Ollama / LM Studio). Skips to lexical if off.'));
+    const wantSem = await io.ask('  Enable it? ' + gold('[y/N]') + ' (current: ' + (cur.URFAEL_EMBED_URL ? 'on' : 'off') + '): ');
+    delete next.URFAEL_EMBED_URL; delete next.URFAEL_EMBED_MODEL;
+    if (/^y/i.test(wantSem)) {
+      let eurl = '';
+      while (!/^https?:\/\//.test(eurl)) eurl = await io.ask('  Embeddings URL ' + dim('(e.g. http://127.0.0.1:11434/v1/embeddings)') + ': ');
+      next.URFAEL_EMBED_URL = eurl;
+      next.URFAEL_EMBED_MODEL = (await io.ask('  Embedding model ' + dim('(Enter = nomic-embed-text)') + ': ')) || 'nomic-embed-text';
+      p('  ' + ok('Semantic recall on.') + ' ' + dim('History indexes lazily as you recall; falls back to BM25 if the endpoint is down.'));
+    } else {
+      p('  ' + dim('Lexical BM25 recall (the default). You can enable semantic recall later by re-running setup.'));
+    }
+
     writeEnv(next);
     p('');
     p('  ' + ok('✓ Wrote ') + dim(PROVIDER_ENV) + ok(' (0600).'));

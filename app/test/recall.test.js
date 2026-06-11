@@ -89,3 +89,43 @@ test('score is attached and strictly descending', () => {
   for (const e of out) assert.equal(typeof e.score, 'number');
   for (let i = 1; i < out.length; i++) assert.ok(out[i - 1].score >= out[i].score);
 });
+
+// ---- hybrid semantic recall (rankHybrid + cosine) ----
+const { rankHybrid, cosine } = require('../recall');
+
+test('rankHybrid with no vectors is identical to BM25 rank (degrades cleanly)', () => {
+  const es = [ent('2026-06-01', 'how do I deploy the app', 'use the pipeline'), ent('2026-06-02', 'what is the weather', 'sunny')];
+  const a = rank(es, 'deploy', 5).map((e) => e.user);
+  const b = rankHybrid(es, 'deploy', { k: 5 }).map((e) => e.user);
+  assert.deepEqual(b, a);
+});
+
+test('rankHybrid surfaces a SEMANTIC match with zero shared tokens (BM25 alone returns nothing)', () => {
+  const es = [ent('2026-06-01', 'the quick brown fox', 'jumps'), ent('2026-06-02', 'completely different subject', 'x')];
+  const q = 'a speedy auburn animal'; // shares no tokens with entry 0
+  assert.equal(rank(es, q, 5).length, 0, 'lexical BM25 finds nothing');
+  const queryVec = [1, 0, 0];
+  const entryVecs = [[0.95, 0.1, 0], [0, 0, 1]]; // entry 0 is semantically close to the query
+  const hits = rankHybrid(es, q, { k: 5, queryVec, entryVecs });
+  assert.ok(hits.length >= 1);
+  assert.equal(hits[0].user, 'the quick brown fox', 'the semantic match surfaces first');
+});
+
+test('rankHybrid fuses lexical + semantic and rewards agreement (RRF)', () => {
+  const es = [
+    ent('2026-06-01', 'deploy the service to production', 'ok'), // lexical + semantic
+    ent('2026-06-02', 'ship the release live', 'ok'),            // semantic only
+    ent('2026-06-03', 'deploy', 'unrelated'),                    // weak lexical only
+  ];
+  const queryVec = [1, 0];
+  const entryVecs = [[1, 0.05], [0.95, 0.1], [0, 1]];
+  const hits = rankHybrid(es, 'deploy production', { k: 3, queryVec, entryVecs });
+  assert.equal(hits[0].user, 'deploy the service to production', 'the doc both rankers agree on wins');
+});
+
+test('cosine: identical=1, orthogonal=0, degenerate=0', () => {
+  assert.ok(Math.abs(cosine([1, 0], [1, 0]) - 1) < 1e-9);
+  assert.equal(cosine([1, 0], [0, 1]), 0);
+  assert.equal(cosine([], [1]), 0);
+  assert.equal(cosine([0, 0], [1, 1]), 0);
+});

@@ -28,6 +28,7 @@ const crypto = require('crypto');
 })();
 const { MODELS, classifyModel, segmentSentences, resolveProfile } = require('./lib');
 const recall = require('./recall');
+const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
 const jobstore = require('./jobstore');
 const runner = require('./runner');
 const scheduler = require('./scheduler');
@@ -390,6 +391,33 @@ function loadSessions() {
     }
   }
   return out;
+}
+
+// ---- semantic recall: optional vector sidecar (only when an embedder is configured) -------------------
+// key = sha1(recall text) -> embedding, appended to a gitignored JSONL next to the archive. Lazily
+// backfilled (bounded) when /recall runs, so history indexes progressively. Fail-soft throughout.
+const RECALL_VEC_FILE = path.join(MEMORY_DIR, '.recall-vectors.jsonl');
+const VEC_EMBED_PER_CALL = 256;
+function recallText(e) { return ((e && e.user) || '') + ' ' + recall.stripSpoken(e && e.urfael); }
+function vecKey(e) { return crypto.createHash('sha1').update(recallText(e)).digest('hex'); }
+function loadVecStore() {
+  const m = new Map();
+  try { for (const ln of tailLines(RECALL_VEC_FILE, 1 << 24)) { if (!ln) continue; let o; try { o = JSON.parse(ln); } catch { continue; } if (o && o.k && Array.isArray(o.v)) m.set(o.k, o.v); } } catch {}
+  return m;
+}
+async function ensureVectors(entries, store) {
+  // embed (bounded per call) the candidates we don't have a vector for yet → progressive backfill
+  const missing = [], seen = new Set();
+  for (const e of entries) { const k = vecKey(e); if (!store.has(k) && !seen.has(k)) { seen.add(k); missing.push({ k, text: recallText(e) }); if (missing.length >= VEC_EMBED_PER_CALL) break; } }
+  if (missing.length) {
+    const vecs = await embed.embed(missing.map((m) => m.text));
+    if (vecs) {
+      let append = '';
+      for (let i = 0; i < missing.length; i++) { store.set(missing[i].k, vecs[i]); append += JSON.stringify({ k: missing[i].k, v: vecs[i] }) + '\n'; }
+      try { fs.appendFileSync(RECALL_VEC_FILE, append); } catch {}
+    }
+  }
+  return entries.map((e) => store.get(vecKey(e)) || null);
 }
 
 // ---- proactive delivery: notification + spoken aloud + phone push -------------------------------
@@ -811,7 +839,19 @@ const server = http.createServer(async (req, res) => {
     try { const u = new URL(req.url, 'http://x'); q = (u.searchParams.get('q') || '').slice(0, 500); k = Math.min(Math.max(parseInt(u.searchParams.get('k'), 10) || 20, 1), 50); } catch {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (!q.trim()) { res.end('[]'); return; }
-    const ranked = recall.rank(loadSessions(), q, k);
+    const entries = loadSessions();
+    let ranked;
+    if (embed.enabled()) {
+      // hybrid: fuse BM25 with semantic cosine (RRF). Fail-soft — any embedder hiccup → pure BM25.
+      try {
+        const store = loadVecStore();
+        const entryVecs = await ensureVectors(entries, store);
+        const qv = await embed.embed([q]);
+        ranked = recall.rankHybrid(entries, q, { k, queryVec: qv && qv[0], entryVecs });
+      } catch { ranked = recall.rank(entries, q, k); }
+    } else {
+      ranked = recall.rank(entries, q, k); // no embedder configured → lexical BM25, unchanged
+    }
     res.end(JSON.stringify(ranked.map((e) => ({ t: e.t, channel: e.channel || '', user: e.user || '', urfael: e.urfael || '', score: e.score }))));
   } else if (req.url === '/jobs') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -880,8 +920,13 @@ const server = http.createServer(async (req, res) => {
 function listen() {
   try { fs.unlinkSync(SOCK); } catch {}
   cleanupOrphanBrains(); jobstore.reconcile();
-  // keep the transient lesson-staging file out of the memory repo (it's a local distill→verify handoff only)
-  try { const gi = path.join(MEMORY_DIR, '.gitignore'); const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : ''; if (!/(^|\n)\.learned\.json/.test(cur)) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + '.learned.json\n'); } catch {}
+  // keep derived/transient sidecars out of the memory repo (lesson-staging handoff + the recall vector index)
+  try {
+    const gi = path.join(MEMORY_DIR, '.gitignore'); const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
+    let add = '';
+    for (const name of ['.learned.json', '.recall-vectors.jsonl']) if (!cur.includes(name) && !add.includes(name)) add += name + '\n';
+    if (add) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + add);
+  } catch {}
   server.listen(SOCK, () => {
     try { fs.chmodSync(SOCK, 0o600); } catch {} // 0600: only the owner can POST to the brain
     logEvent({ ev: 'daemon_start', heartbeatMins: HB_MINS || 0, review: REVIEW_ON ? REVIEW_EVERY : 0, curatorDays: CURATOR_DAYS });

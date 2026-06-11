@@ -28,7 +28,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 ---
 
-## Workstream 1 — Hybrid semantic recall *(start here)*
+## Workstream 1 — Hybrid semantic recall ✅ *(shipped)*
 
 **Gap.** Recall is lexical BM25 only (`app/recall.js`). A paraphrased query that shares no tokens with a past turn will not surface it. This degrades the *core* promise (memory continuity) for every audience, and it is Hermes's strongest non-research differentiator (FTS5 + LLM-summarized recall + Honcho user-modeling).
 
@@ -101,7 +101,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 ## Sequencing
 
-1. **Now:** Workstream 1 (semantic recall) — the one gap that degrades the core for everyone, and the foundation 2 and 4 lean on.
+1. ~~Workstream 1 (semantic recall)~~ ✅ **shipped** — hybrid BM25+vector (RRF) in recall.js, optional local embedder (embed.js), lazy-backfilled vector index, fail-soft to BM25. **Next: Workstream 2 (team mode).**
 2. **Then:** Workstream 2 (team mode) — unlocks the highest-value audience.
 3. **In parallel with 2:** Workstream 3 (onboarding/installer/Windows) — unlocks reach; independent of the kernels.
 4. **Then:** Workstreams 4 and 5 (safe hub, verified multi-provider) — the category-definers.

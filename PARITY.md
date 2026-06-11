@@ -29,7 +29,7 @@
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Curated memory file(s) | MEMORY.md + daily notes | MEMORY.md (2.2k cap) + USER.md | ✦ MEMORY/USER/LESSONS/WORKFLOW, no hard cap, git-versioned |
-| Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ BM25 ranked recall (daemon /recall) across brain + CLI + Console + dashboard; plain-text, no index to corrupt |
+| Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ **hybrid recall**: BM25 + optional local semantic vectors fused via RRF (daemon /recall); paraphrases with zero shared tokens surface; fail-soft to BM25; no cloud, no index to corrupt |
 | Consolidation | "dreaming" pass | post-turn background review | ✓ end-of-conversation distill (cheaper; per-turn review planned as opt-in) |
 | User modeling | — | Honcho dialectic | ◐ USER.md auto-curated (no per-turn dialectic) |
 
