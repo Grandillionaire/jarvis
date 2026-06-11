@@ -1,0 +1,24 @@
+{
+  "_comment": "Skill hub registry — a plain JSON index in a curated git repo. Point Urfael at it with URFAEL_HUB_INDEX (or host it at the default and Urfael finds it). Browse with `urfael hub`; install with `urfael hub install <slug>`. EVERY install runs the safety scanner + an sha256 integrity check + a full-content preview, and the agent NEVER executes a skill — so a poisoned listing can't install and a swapped payload at a pinned URL is rejected. Authors: `urfael hub publish <file>` prints the entry (incl. its sha256) to PR here.",
+  "name": "Urfael skills",
+  "skills": [
+    {
+      "slug": "inbox-triage",
+      "title": "Inbox triage",
+      "description": "Summarize unread mail into a 3-bullet brief and draft replies (never sends).",
+      "url": "https://raw.githubusercontent.com/Grandillionaire/urfael-skills/main/skills/inbox-triage.md",
+      "author": "Grandillionaire",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tags": ["email", "productivity"]
+    },
+    {
+      "slug": "daily-brief",
+      "title": "Daily brief",
+      "description": "Pull today's calendar + open tasks into a spoken morning brief.",
+      "url": "https://raw.githubusercontent.com/Grandillionaire/urfael-skills/main/skills/daily-brief.md",
+      "author": "Grandillionaire",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tags": ["calendar", "routine"]
+    }
+  ]
+}

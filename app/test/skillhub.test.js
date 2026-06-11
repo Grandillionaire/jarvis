@@ -71,3 +71,50 @@ test('scan: a benign secret-store mention without exfil stays out of the intent 
   // (.env match is itself a danger by the secret-store rule; assert the INTENT rule didn't double-add)
   assert.ok(!flags.some((f) => /reads a secret AND sends/.test(f.why)));
 });
+
+// ---- skill hub (registry parse, search, provenance) ----
+const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const crypto = require('node:crypto');
+
+test('hub: parseIndex drops unsafe entries (non-https, no url, junk) and SANITIZES every slug', () => {
+  const idx = JSON.stringify({ skills: [
+    { slug: 'good-skill', title: 'Good', url: 'https://example.com/good.md', sha256: 'abc', tags: ['x'] },
+    { slug: 'http-skill', url: 'http://example.com/x.md' },          // non-https → dropped
+    { slug: '../escape', url: 'https://example.com/e.md' },          // unsafe slug → SANITIZED to a safe slug, kept
+    { name: 'No Url' },                                              // no url → dropped
+    null, 42,                                                        // junk → dropped
+  ] });
+  const e = hub.parseIndex(idx);
+  assert.equal(e.length, 2, 'good + sanitized; non-https/no-url/junk dropped');
+  assert.ok(e.every((x) => /^https:\/\//.test(x.url)), 'every kept url is https');
+  assert.ok(e.every((x) => /^[a-z0-9-]+$/.test(x.slug) && !x.slug.includes('..')), 'no path-escaping slug survives');
+});
+
+test('hub: parseIndex is fail-soft (junk/empty → [])', () => {
+  assert.deepEqual(hub.parseIndex('not json'), []);
+  assert.deepEqual(hub.parseIndex('{}'), []);
+  assert.deepEqual(hub.parseIndex('[]'), []);
+  assert.deepEqual(hub.parseIndex(JSON.stringify([{ slug: 'x', url: 'ftp://x/y.md' }])), []); // ftp dropped
+});
+
+test('hub: searchEntries + findEntry match by slug/title/description/tags', () => {
+  const entries = hub.parseIndex(JSON.stringify({ skills: [
+    { slug: 'inbox-triage', title: 'Inbox triage', description: 'summarize mail', url: 'https://x/a.md', tags: ['email'] },
+    { slug: 'daily-brief', title: 'Daily brief', description: 'calendar', url: 'https://x/b.md', tags: ['routine'] },
+  ] }));
+  assert.equal(hub.searchEntries(entries, 'mail').length, 1);
+  assert.equal(hub.searchEntries(entries, 'email').length, 1);   // tag match
+  assert.equal(hub.searchEntries(entries, 'zzz').length, 0);
+  assert.equal(hub.findEntry(entries, 'daily-brief').title, 'Daily brief');
+  assert.equal(hub.findEntry(entries, 'nope'), null);
+});
+
+test('hub: entryFor computes the correct sha256 + slug for a local skill (provenance for publishing)', () => {
+  const tmp = path.join(os.tmpdir(), 'uf-skill-' + process.pid + '.md');
+  const body = '# My Skill\nDo a useful thing in three steps.\n';
+  fs.writeFileSync(tmp, body);
+  const e = hub.entryFor(tmp);
+  assert.equal(e.sha256, crypto.createHash('sha256').update(body, 'utf8').digest('hex'));
+  assert.ok(/^[a-z0-9-]+$/.test(e.slug));
+  fs.unlinkSync(tmp);
+  assert.equal(hub.entryFor('/no/such/file.md'), null); // missing file → null
+});

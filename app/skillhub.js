@@ -9,6 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 
 const VAULT = path.join(os.homedir(), process.env.URFAEL_VAULT_DIR || 'Urfael');
 const SKILLS_DIR = path.join(VAULT, '_urfael', 'skills');
@@ -188,6 +189,14 @@ async function installFromUrl(url, opts = {}) {
   const body = fetched.body;
   if (!body.trim()) { console.error('✗ empty file'); return { ok: false, error: 'empty' }; }
 
+  // PROVENANCE/INTEGRITY (hub installs): if the registry pins a sha256, the fetched bytes MUST match it, or the
+  // skill is refused before it's even shown — so a registry entry can't be swapped for a different payload at its URL.
+  if (opts.sha256) {
+    const got = crypto.createHash('sha256').update(body, 'utf8').digest('hex');
+    if (got.toLowerCase() !== String(opts.sha256).toLowerCase()) { console.error('✗ integrity check FAILED — sha256 mismatch (expected ' + String(opts.sha256).slice(0, 12) + '…, got ' + got.slice(0, 12) + '…). Refusing.'); return { ok: false, error: 'integrity', got, expected: opts.sha256 }; }
+    process.stdout.write(gold('✓ integrity') + dim(' — sha256 matches the registry (' + got.slice(0, 12) + '…)') + '\n');
+  }
+
   // derive slug from a name in the file if present, else from the URL's basename
   let u; try { u = new URL(url); } catch {}
   const urlBase = u ? path.basename(u.pathname).replace(/\.md$/i, '') : '';
@@ -254,4 +263,52 @@ function promptYesNo(question) {
   });
 }
 
-module.exports = { listLocal, exportSkill, scan, installFromUrl, slugify, meta, SKILLS_DIR };
+// ---- SKILL HUB --------------------------------------------------------------------------------------
+// A registry of shareable skills where every install passes the SAME gate as a direct URL install — the static
+// safety scanner, an integrity (sha256) check, a full-content preview, and the agent NEVER executes a skill.
+// "the app store with a security guarantee." The registry is a plain JSON index in a curated git repo; set
+// URFAEL_HUB_INDEX to point at yours (default below). A poisoned listing is still caught by the scanner; a
+// swapped payload at a listed URL is caught by the sha256 pin.
+const DEFAULT_INDEX = 'https://raw.githubusercontent.com/Grandillionaire/urfael-skills/main/index.json';
+function hubIndexUrl() { return process.env.URFAEL_HUB_INDEX || DEFAULT_INDEX; }
+
+// Parse + validate a registry index. Pure, fail-soft: [] on junk; drops any entry without a safe slug or an
+// https url. Each kept entry: {slug, title, description, url, author, sha256, tags}.
+function parseIndex(text) {
+  let j; try { j = JSON.parse(text); } catch { return []; }
+  const list = Array.isArray(j) ? j : (j && Array.isArray(j.skills) ? j.skills : []);
+  const out = [];
+  for (const e of list) {
+    if (!e || typeof e !== 'object') continue;
+    const slug = slugify(e.slug || e.name || '');
+    if (!slug || !/^[a-z0-9-]+$/.test(slug)) continue;
+    if (typeof e.url !== 'string' || !/^https:\/\//i.test(e.url)) continue; // https only
+    out.push({ slug, title: String(e.title || e.name || slug).slice(0, 80), description: String(e.description || '').slice(0, 200), url: e.url, author: String(e.author || '').slice(0, 60), sha256: typeof e.sha256 === 'string' ? e.sha256 : '', tags: Array.isArray(e.tags) ? e.tags.map((t) => String(t).slice(0, 24)).slice(0, 8) : [] });
+  }
+  return out;
+}
+async function fetchIndex(url) { const f = await fetchMd(url || hubIndexUrl()); return parseIndex(f.body); } // SSRF-guarded via fetchMd
+function searchEntries(entries, q) {
+  const s = String(q || '').toLowerCase().trim();
+  if (!s) return entries;
+  return entries.filter((e) => (e.slug + ' ' + e.title + ' ' + e.description + ' ' + (e.tags || []).join(' ')).toLowerCase().includes(s));
+}
+function findEntry(entries, slug) { const k = slugify(slug); return (entries || []).find((e) => e.slug === k) || null; }
+// Install a skill BY SLUG from the registry → the same scan + integrity + preview + never-execute install path.
+async function hubInstall(slug, opts = {}) {
+  let entries; try { entries = await fetchIndex(opts.index); } catch (e) { console.error('✗ ' + (e && e.message || e)); return { ok: false, error: 'index' }; }
+  const e = findEntry(entries, slug);
+  if (!e) { console.error('✗ no skill "' + slug + '" in the registry. Try: urfael hub search <term>'); return { ok: false, error: 'not found' }; }
+  process.stdout.write(dim('registry entry: ' + e.slug + (e.author ? ' · by ' + e.author : '') + (e.sha256 ? ' · sha256-pinned' : ' · UNPINNED')) + '\n');
+  return installFromUrl(e.url, { yes: opts.yes, sha256: e.sha256 });
+}
+// Produce the registry index entry for a LOCAL skill file (so an author can PR it to the registry).
+function entryFor(file) {
+  let body; try { body = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  const m = meta(body, path.basename(String(file)).replace(/\.md$/i, ''));
+  const slug = slugify(m.name) || slugify(path.basename(String(file)).replace(/\.md$/i, ''));
+  if (!slug) return null;
+  return { slug, title: m.name || slug, description: m.desc || '', url: 'https://YOUR-HOST/skills/' + slug + '.md', author: '', sha256: crypto.createHash('sha256').update(body, 'utf8').digest('hex'), tags: [] };
+}
+
+module.exports = { listLocal, exportSkill, scan, installFromUrl, slugify, meta, SKILLS_DIR, hubIndexUrl, parseIndex, fetchIndex, searchEntries, findEntry, hubInstall, entryFor };

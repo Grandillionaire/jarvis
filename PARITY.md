@@ -49,6 +49,9 @@
 ## Skills & self-improvement
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
+| Skill hub / marketplace | ClawHub (~20% malware) | agentskills.io | ✦ `urfael hub` — every install scanned + **sha256-pinned** + previewed, **never executed**: the app store with a security guarantee (the poisoned-listing class can\'t install) |
+| | OpenClaw | Hermes | Urfael |
+|---|---|---|---|
 | Skill files | ClawHub registry | reflective phase + curator + hub | ✓ reflective distill + opt-in per-turn review (URFAEL_REVIEW) → `_urfael/skills/`; prove-wrong → fix/delete |
 | Skill registry | ✦ (and poisoned — 20% malware) | hub + trust tiers | deliberately none (security); Claude Code skills work natively |
 | Periodic curator | — | ✓ (7-day cycle, usage telemetry) | ✓ opt-in N-day curator (URFAEL_CURATOR_DAYS): consolidate/fix/delete stale skills, cadence survives restarts |

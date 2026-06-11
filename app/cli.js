@@ -20,6 +20,9 @@
 //   urfael skills export <name>                print a skill to stdout to share it
 //   urfael skills scan <file>                  static safety-scan a skill .md before trusting it
 //   urfael skills install <https-url> [--yes]  fetch a skill .md, scan it, show it, install on confirm (never executes it)
+//   urfael hub [search <term>]                 browse the safe skill registry (set URFAEL_HUB_INDEX to your index.json)
+//   urfael hub install <slug> [--yes]          install a registry skill — scanned + sha256-checked + previewed, never executed
+//   urfael hub publish <file>                  print the registry index entry (slug + sha256) for a local skill to submit
 //   urfael tui                                 full-screen terminal cockpit (streams turns, scrollback, status bar)
 //   urfael dashboard                           open the token-gated localhost web console (prints the URL)
 //   urfael stop                                abort the current in-flight turn (also: Ctrl+C while asking)
@@ -135,6 +138,34 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     }
     if (sub === 'install' && rest[1]) { const r = await hub.installFromUrl(rest[1], { yes: rest.includes('--yes') }); if (!r.ok) process.exit(1); return; }
     console.log('usage: urfael skills list | export <name> | scan <file> | install <https-url> [--yes]');
+    return;
+  }
+
+  // hub: the safe skill registry. Browse/search/install BY SLUG — every install runs the scanner + integrity
+  // (sha256) + full preview, and never executes a skill. Pure CLI, runs BEFORE ensureDaemon.
+  if (cmd === 'hub') {
+    const hub = require('./skillhub');
+    const sub = rest[0];
+    if (sub === 'install' && rest[1]) { const r = await hub.hubInstall(rest[1], { yes: rest.includes('--yes') }); if (!r.ok) process.exit(1); return; }
+    if (sub === 'publish' && rest[1]) {
+      const e = hub.entryFor(rest[1]);
+      if (!e) { console.error('✗ could not read ' + rest[1]); process.exit(1); }
+      console.log(dim('Add this entry to your registry index.json (set the real url + author), then PR it:'));
+      console.log(JSON.stringify(e, null, 2));
+      return;
+    }
+    // default + search: browse the registry
+    let entries; try { entries = await hub.fetchIndex(); } catch (e) { console.error('✗ could not fetch the registry (' + ((e && e.message) || e) + '). Set URFAEL_HUB_INDEX to your index.json.'); process.exit(1); }
+    if (sub === 'search' && rest[1]) entries = hub.searchEntries(entries, rest.slice(1).join(' '));
+    if (!entries.length) { console.log(dim('no skills in the registry (or none matched)')); return; }
+    const installed = new Set(hub.listLocal().map((s) => s.slug));
+    console.log(gold('Skill hub') + dim('  ·  ' + hub.hubIndexUrl()));
+    for (const e of entries.slice(0, 60)) {
+      const mark = installed.has(e.slug) ? gold('✓') : ' ';
+      const pin = e.sha256 ? '' : dim(' (unpinned)');
+      console.log(`  ${mark} ${gold(e.slug.padEnd(22))} ${dim((e.description || e.title).slice(0, 50))}${pin}`);
+    }
+    console.log(dim('install:  urfael hub install <slug>   ·   each install is scanned + sha-checked + previewed, never executed'));
     return;
   }
 

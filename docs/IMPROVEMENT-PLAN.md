@@ -71,7 +71,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 **Status (2026-06-11):** ✅ GUI onboarding (Console first-run card; subscription / API key / local; reuses `setup.writeEnv`; headless-verified). ◐ installer pipeline wired (`npm run dist` + `.github/workflows/build.yml`) — unsigned builds work today, signing/notarization needs your certs as repo secrets. ◐ Windows `notifyOwner` branch (toast + SAPI) code-complete but unverified on Windows; the launch-on-login service + a Windows installer script remain.
 
-## Workstream 4 — Safe skill hub
+## Workstream 4 — Safe skill hub ✅ *(shipped)*
 
 **Gap.** OpenClaw's ClawHub shipped ~20% malware; Hermes uses an external standard. Both are "marketplaces with risk." Urfael already has the scanner + verifier + never-executes-a-skill, so it can offer the *only safe* version.
 
@@ -106,7 +106,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 1. ~~Workstream 1 (semantic recall)~~ ✅ **shipped** — hybrid BM25+vector (RRF) in recall.js, optional local embedder (embed.js), lazy-backfilled vector index, fail-soft to BM25. **Next: Workstream 2 (team mode).**
 2. ~~Workstream 2 (team mode)~~ ✅ **shipped** — per-channel roster of allowlisted principals, role-scoped sandbox (a role only narrows, never escalates to local), per-principal attribution + `/audit` trail; telegram is the reference bridge. See [TEAM-MODE.md](TEAM-MODE.md). **Next: Workstream 3 (onboarding/installer/Windows).**
 3. ~~Workstream 3 (onboarding/installer/Windows)~~ ◐ **partly shipped** — GUI first-run onboarding in the Console is DONE + headless-verified (no terminal needed). The electron-builder + GitHub Actions pipeline (mac dmg / linux AppImage / win nsis) is wired but signing needs your Apple/Windows certs (secrets documented in .github/workflows/build.yml). The Windows OS branches (toast + SAPI speech) are code-complete but UNVERIFIED on Windows hardware. **Next: Workstream 4 (safe skill hub).**
-4. **Then:** Workstreams 4 and 5 (safe hub, verified multi-provider) — the category-definers.
+4. ~~Workstream 4 (safe skill hub)~~ ✅ **shipped** — `urfael hub` browse/search/install-by-slug + publish; every install runs the scanner + an sha256 integrity pin + full preview, never executes a skill. Registry is a curated JSON index (URFAEL_HUB_INDEX). **Next: Workstream 5 (first-class verified multi-provider).** Then Workstream 5 and the launch.
 5. **As soon as the demo exists:** Workstream 6 (launch) — does not block on the rest.
 
 ## Explicit non-goals (what we refuse, and why)
