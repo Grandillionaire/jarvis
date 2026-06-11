@@ -40,6 +40,7 @@ body.state-idle #wordmark { opacity: 0.4; }
 }
 #orbwrap:hover #close { opacity: 0.85; }
 #close:hover { background: rgba(255,80,80,0.5); color: #fff; }
+#close svg { width: 11px; height: 11px; }
 
 /* dock — project launcher chips (expanded only) */
 #dock { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; max-width: 92%;

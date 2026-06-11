@@ -84,7 +84,16 @@ button { font-family: var(--serif); }
 }
 #mic:hover, #mute:hover { background: rgba(212, 168, 90, 0.1); color: var(--gold); }
 #mic.rec { background: rgba(255, 138, 66, 0.18); color: var(--ember); border-color: rgba(255, 138, 66, 0.4); }
-#mute.off { opacity: 0.45; }
+/* custom line-icons — no emoji anywhere in the composer */
+#composer .ic { display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+#composer .ic svg { width: 19px; height: 19px; }
+#mute .slash { opacity: 0; transition: opacity .12s; }       /* speaker shows its waves by default */
+#mute.off { opacity: 0.7; color: var(--dim); }               /* muted: dim, hide the waves, show the slash */
+#mute.off .wave { opacity: 0; }
+#mute.off .slash { opacity: 0.95; }
+#send .i-stop { display: none; }                             /* send shows the arrow; .stop swaps to the square */
+#send.stop .i-send { display: none; }
+#send.stop .i-stop { display: inline; }
 #jump {
   position: absolute; bottom: 86px; left: 50%; transform: translateX(-50%);
   min-width: 34px; min-height: 34px; border-radius: 17px; border: 1px solid var(--line);
@@ -138,6 +147,8 @@ button { font-family: var(--serif); }
 .row .state { font-variant: small-caps; letter-spacing: 1px; font-size: 11px; color: var(--gold); }
 .row .state.failed, .row .state.error { color: var(--ember); }
 .row-act.small { padding: 3px 10px; min-height: 26px; font-size: 12px; }
+#distill { display: inline-flex; align-items: center; gap: 7px; }
+#distill .bi { width: 14px; height: 14px; flex: none; }
 #job-log { background: var(--bg-raised); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; max-height: 320px; overflow-y: auto; color: var(--dim); margin-top: 14px; }
 
 #hearth-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }

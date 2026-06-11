@@ -38,10 +38,17 @@
       </div>
       <button id="jump" hidden aria-label="Jump to latest">↓</button>
       <div id="composer">
-        <button id="mic" aria-label="Push to talk" title="Speak (click, talk, click)">🎙</button>
+        <button id="mic" class="ic" aria-label="Push to talk" title="Speak (click, talk, click)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.5" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></svg>
+        </button>
         <textarea id="input" rows="1" placeholder="Ask Urfael…" aria-label="Message Urfael"></textarea>
-        <button id="mute" aria-label="Toggle spoken replies" title="Spoken replies on/off">🔊</button>
-        <button id="send" aria-label="Send">↵</button>
+        <button id="mute" class="ic" aria-label="Toggle spoken replies" title="Spoken replies on/off">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h3.5L13 19V5L7.5 9H4z"/><g class="wave"><path d="M16 9.2a4 4 0 0 1 0 5.6"/><path d="M18.4 7a7 7 0 0 1 0 10"/></g><line class="slash" x1="3.5" y1="3.5" x2="20.5" y2="20.5"/></svg>
+        </button>
+        <button id="send" class="ic" aria-label="Send">
+          <svg class="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h13"/><path d="M11 6l6 6-6 6"/></svg>
+          <svg class="i-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+        </button>
       </div>
     </section>
 
@@ -86,7 +93,7 @@
       <div class="pane">
         <h2>Hearth</h2>
         <div id="hearth-grid"></div>
-        <button id="distill" title="Distill this conversation into long-term memory now">✦ Distill memory</button>
+        <button id="distill" title="Distill this conversation into long-term memory now"><svg class="bi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.7 5L19 9.6l-4.3 3 1.6 5.4L12 15l-4.3 3 1.6-5.4-4.3-3 5.3-1.6z"/></svg><span class="label">Distill memory</span></button>
       </div>
     </section>
 

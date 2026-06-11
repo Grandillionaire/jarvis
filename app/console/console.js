@@ -79,8 +79,7 @@ function queueRender() { if (!renderQueued) { renderQueued = true; requestAnimat
 // Send button doubles as Stop while a turn is in flight — one affordance, two states.
 function setAsking(on) {
   asking = on;
-  sendBtn.classList.toggle('stop', on);
-  sendBtn.textContent = on ? '■' : '↵';
+  sendBtn.classList.toggle('stop', on);   // CSS swaps the arrow icon for the stop-square icon
   sendBtn.setAttribute('aria-label', on ? 'Stop' : 'Send');
 }
 async function abort() {
@@ -177,7 +176,7 @@ async function speak(text) {
 }
 function toggleVoice() {
   voiceOn = !voiceOn;
-  muteBtn.textContent = voiceOn ? '🔊' : '🔇'; muteBtn.classList.toggle('off', !voiceOn);
+  muteBtn.classList.toggle('off', !voiceOn);
   window.urfael.setConfig('CONSOLE_VOICE', voiceOn ? '1' : '0');
 }
 muteBtn.addEventListener('click', toggleVoice);
@@ -319,7 +318,7 @@ async function loadHearth() {
   clearInterval(hearthTimer);
   hearthTimer = setInterval(() => { if (view === 'hearth') loadHearth(); else clearInterval(hearthTimer); }, 5000);
 }
-$('#distill').addEventListener('click', () => { window.urfael.conversationEnd(); $('#distill').textContent = '✦ Distilling…'; setTimeout(() => ($('#distill').textContent = '✦ Distill memory'), 2500); });
+$('#distill').addEventListener('click', () => { window.urfael.conversationEnd(); $('#distill .label').textContent = 'Distilling…'; setTimeout(() => ($('#distill .label').textContent = 'Distill memory'), 2500); });
 
 // ---- settings ---------------------------------------------------------------------
 const SETTINGS = [
@@ -408,6 +407,6 @@ if (window.urfael.onMenu) window.urfael.onMenu((a) => {
 (async () => {
   const cfg = await window.urfael.config().catch(() => ({}));
   voiceOn = cfg.consoleVoice !== false;
-  muteBtn.textContent = voiceOn ? '🔊' : '🔇'; muteBtn.classList.toggle('off', !voiceOn);
+  muteBtn.classList.toggle('off', !voiceOn);
 })();
 show('converse');
