@@ -56,7 +56,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 **Acceptance.** Two allowlisted principals with different roles get correctly-scoped sandboxes; a non-enrolled sender is still dropped; the benchmark still passes with multi-principal enabled; an audit export exists.
 
-## Workstream 3 — GUI onboarding + signed installer + Windows
+## Workstream 3 — GUI onboarding + signed installer + Windows ◐ *(onboarding shipped; installer + Windows scaffolded)*
 
 **Gap.** Onboarding is CLI-only; no notarized `.dmg` / `.AppImage`; macOS + Linux only. Pure adoption gaps that exclude most consumers. Zero moat cost to close.
 
@@ -68,6 +68,8 @@ Design rule for everything below: **a feature ships only when it routes through 
 **Moat-safety.** Adoption only; no new privileged surface. Windows widens the OS target, tested separately.
 
 **Acceptance.** A non-technical user installs a signed build, completes onboarding in the GUI, and talks to Urfael without a terminal; Windows runs the core + voice.
+
+**Status (2026-06-11):** ✅ GUI onboarding (Console first-run card; subscription / API key / local; reuses `setup.writeEnv`; headless-verified). ◐ installer pipeline wired (`npm run dist` + `.github/workflows/build.yml`) — unsigned builds work today, signing/notarization needs your certs as repo secrets. ◐ Windows `notifyOwner` branch (toast + SAPI) code-complete but unverified on Windows; the launch-on-login service + a Windows installer script remain.
 
 ## Workstream 4 — Safe skill hub
 
@@ -103,7 +105,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 1. ~~Workstream 1 (semantic recall)~~ ✅ **shipped** — hybrid BM25+vector (RRF) in recall.js, optional local embedder (embed.js), lazy-backfilled vector index, fail-soft to BM25. **Next: Workstream 2 (team mode).**
 2. ~~Workstream 2 (team mode)~~ ✅ **shipped** — per-channel roster of allowlisted principals, role-scoped sandbox (a role only narrows, never escalates to local), per-principal attribution + `/audit` trail; telegram is the reference bridge. See [TEAM-MODE.md](TEAM-MODE.md). **Next: Workstream 3 (onboarding/installer/Windows).**
-3. **In parallel with 2:** Workstream 3 (onboarding/installer/Windows) — unlocks reach; independent of the kernels.
+3. ~~Workstream 3 (onboarding/installer/Windows)~~ ◐ **partly shipped** — GUI first-run onboarding in the Console is DONE + headless-verified (no terminal needed). The electron-builder + GitHub Actions pipeline (mac dmg / linux AppImage / win nsis) is wired but signing needs your Apple/Windows certs (secrets documented in .github/workflows/build.yml). The Windows OS branches (toast + SAPI speech) are code-complete but UNVERIFIED on Windows hardware. **Next: Workstream 4 (safe skill hub).**
 4. **Then:** Workstreams 4 and 5 (safe hub, verified multi-provider) — the category-definers.
 5. **As soon as the demo exists:** Workstream 6 (launch) — does not block on the rest.
 

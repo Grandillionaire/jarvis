@@ -6,6 +6,35 @@
 const $ = (s) => document.querySelector(s);
 const VIEWS = ['converse', 'archive', 'reminders', 'jobs', 'hearth', 'settings'];
 
+// ---- first-run onboarding (no terminal needed) -----------------------------
+(function onboarding() {
+  const ob = $('#onboard'); if (!ob) return;
+  let mode = 'subscription';
+  const note = $('#ob-note'), keyIn = $('#ob-key'), urlIn = $('#ob-url');
+  function selectChoice(el) {
+    mode = el.dataset.mode;
+    ob.querySelectorAll('.ob-choice').forEach((c) => c.classList.toggle('sel', c === el));
+    if (keyIn) keyIn.hidden = mode !== 'apikey';
+    if (urlIn) urlIn.hidden = mode !== 'local';
+    const focusEl = mode === 'apikey' ? keyIn : mode === 'local' ? urlIn : null;
+    if (focusEl) setTimeout(() => focusEl.focus(), 0);
+  }
+  ob.querySelectorAll('.ob-choice').forEach((c) => c.addEventListener('click', () => selectChoice(c)));
+  $('#ob-go').addEventListener('click', async () => {
+    note.classList.remove('err'); note.textContent = '';
+    const cfg = { mode };
+    if (mode === 'apikey') { cfg.key = (keyIn.value || '').trim(); if (!cfg.key) { note.classList.add('err'); note.textContent = 'Paste your API key, or pick another option.'; return; } }
+    if (mode === 'local') { cfg.url = (urlIn.value || '').trim(); if (!/^https?:\/\//.test(cfg.url)) { note.classList.add('err'); note.textContent = 'Enter a valid http(s) endpoint, or pick another option.'; return; } }
+    $('#ob-go').disabled = true; note.textContent = 'Setting up…';
+    const r = await window.urfael.saveProvider(cfg).catch(() => ({ ok: false }));
+    $('#ob-go').disabled = false;
+    if (r && r.ok) { ob.hidden = true; try { $('#input').focus(); } catch {} }
+    else { note.classList.add('err'); note.textContent = 'Could not save. ' + ((r && r.error) || 'Try again.'); }
+  });
+  // show only on a fresh install (the marker / provider.env is absent)
+  (async () => { try { const s = await window.urfael.providerStatus(); if (s && !s.onboarded) ob.hidden = false; } catch {} })();
+})();
+
 // ---- view switching --------------------------------------------------------
 let view = 'converse';
 function show(v) {

@@ -11,6 +11,33 @@
 <body>
   <div id="drag"></div>
 
+  <!-- First-run onboarding overlay (no terminal needed). Hidden until console.js confirms it's a fresh install. -->
+  <div id="onboard" hidden>
+    <div class="ob-card">
+      <img class="ob-logo" src="../renderer/urfael-logo.svg" alt="" width="58" height="58" />
+      <h1 class="ob-title">Welcome to Urfael</h1>
+      <p class="ob-sub">An old intelligence in service to one person. How should it reach Claude?</p>
+      <div class="ob-choices">
+        <button class="ob-choice sel" data-mode="subscription">
+          <span class="ob-h">Claude subscription <em>· recommended</em></span>
+          <span class="ob-d">Use your Pro/Max login. No key, flat rate. Pick this if you're signed into Claude Code.</span>
+        </button>
+        <button class="ob-choice" data-mode="apikey">
+          <span class="ob-h">Anthropic API key</span>
+          <span class="ob-d">Pay-per-token. For when you don't have a subscription.</span>
+          <input class="ob-in" id="ob-key" type="password" placeholder="sk-ant-…" autocomplete="off" hidden />
+        </button>
+        <button class="ob-choice" data-mode="local">
+          <span class="ob-h">Local model</span>
+          <span class="ob-d">Run on your own GPU (Ollama / LM Studio). Nothing leaves the machine.</span>
+          <input class="ob-in" id="ob-url" type="text" placeholder="http://127.0.0.1:3456" hidden />
+        </button>
+      </div>
+      <button id="ob-go" class="ob-go">Get started</button>
+      <p class="ob-note" id="ob-note"></p>
+    </div>
+  </div>
+
   <nav id="side" aria-label="Sections">
     <img id="mark" src="../renderer/urfael-logo.svg" alt="" width="34" height="34" />
     <button class="nav" data-view="converse" aria-label="Converse (⌘1)"><span class="rune">ᚢ</span>Converse</button>

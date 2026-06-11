@@ -15,9 +15,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const TTS_ENV = path.join(os.homedir(), '.claude', 'urfael', 'tts.env');
-const SOCK = path.join(os.homedir(), '.claude', 'urfael', 'daemon.sock');
+const JDIR = path.join(os.homedir(), '.claude', 'urfael');
+const TTS_ENV = path.join(JDIR, 'tts.env');
+const SOCK = path.join(JDIR, 'daemon.sock');
+const ONBOARDED = path.join(JDIR, 'onboarded'); // marker: first-run GUI onboarding done (shown once)
 const DAEMON = path.join(__dirname, 'daemon.js');
+const setup = require('./setup'); // reuse the wizard's provider.env read/write (no side effects on require)
 
 let win = null;
 let consoleWin = null;
@@ -140,6 +143,29 @@ ipcMain.on('urfael:set-config', (_e, key, val) => {
 });
 ipcMain.handle('urfael:vitals', () => daemonGet('/vitals'));
 ipcMain.on('urfael:conversation-end', () => daemonPost('/conversation-end'));
+
+// ---- first-run GUI onboarding (so a non-technical user never needs a terminal) ----
+ipcMain.handle('urfael:provider-status', () => {
+  let mode = 'subscription';
+  try { const e = setup.readEnv(); mode = e.ANTHROPIC_BASE_URL ? 'local' : e.ANTHROPIC_API_KEY ? 'apikey' : 'subscription'; } catch {}
+  let onboarded = false; try { onboarded = fs.existsSync(ONBOARDED) || fs.existsSync(setup.PROVIDER_ENV); } catch {}
+  return { onboarded, mode };
+});
+ipcMain.handle('urfael:save-provider', async (_e, cfg) => {
+  cfg = cfg || {};
+  try {
+    const next = { ...setup.readEnv() };
+    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN']) delete next[k]; // clear managed auth keys
+    if (cfg.mode === 'apikey' && typeof cfg.key === 'string' && cfg.key.trim()) next.ANTHROPIC_API_KEY = cfg.key.trim();
+    else if (cfg.mode === 'local' && typeof cfg.url === 'string' && /^https?:\/\//.test(cfg.url)) { next.ANTHROPIC_BASE_URL = cfg.url.trim(); next.ANTHROPIC_AUTH_TOKEN = (typeof cfg.token === 'string' && cfg.token.trim()) || 'local'; }
+    setup.writeEnv(next);                                                         // 0600, atomic (reused from the CLI wizard)
+    try { fs.mkdirSync(JDIR, { recursive: true }); fs.writeFileSync(ONBOARDED, new Date().toISOString()); } catch {}
+    try { await daemonPostJson('/shutdown'); } catch {}                          // restart so the daemon loads the new provider.env
+    await new Promise((r) => setTimeout(r, 600));
+    await ensureDaemon();
+    return { ok: true };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+});
 
 // ---- click-through: pass mouse to apps below except over lit/interactive elements ----
 ipcMain.on('urfael:interactive', (_e, on) => { if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true }); });

@@ -1,0 +1,54 @@
+# Build signed/packaged Urfael installers on every tag (and manually).
+#
+# WHAT YOU GET WITHOUT ANY SECRETS: an unsigned macOS .dmg/.zip, a Linux .AppImage, and a Windows .exe (nsis)
+# as workflow artifacts. They run fine for you and CI-savvy users; consumers will see an OS "unidentified
+# developer" warning until you add signing.
+#
+# TO SIGN/NOTARIZE (consumer-grade, no warnings), add these repo secrets (electron-builder reads them):
+#   macOS:   CSC_LINK (base64 of your .p12 Developer ID cert), CSC_KEY_PASSWORD,
+#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   (for notarization)
+#   Windows: WIN_CSC_LINK (base64 of your code-signing .pfx), WIN_CSC_KEY_PASSWORD
+# Linux AppImage needs no signing. Nothing here runs until you push a tag, so it costs nothing to merge.
+name: build
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci || npm install
+      - run: npm test
+      - name: Build installer
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # signing — present only if you added the secrets above; absent => an unsigned build (still works)
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: urfael-${{ matrix.os }}
+          path: |
+            app/dist/*.dmg
+            app/dist/*.zip
+            app/dist/*.AppImage
+            app/dist/*.exe
+          if-no-files-found: ignore

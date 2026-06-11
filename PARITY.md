@@ -17,6 +17,13 @@
 | Mobile nodes / canvas | iOS/Android, A2UI canvas | ✗ | ✗ — non-goal for now (phone via bridges) |
 | REST API | WS gateway | OpenAI-compatible REST | ✓ OpenAI-compatible `/v1/chat/completions`+`/v1/models` (127.0.0.1-only, token-gated) — drives Open WebUI/LibreChat/any OpenAI client |
 
+## Onboarding & packaging
+| | OpenClaw | Hermes | Urfael |
+|---|---|---|---|
+| First-run onboarding | installer | guided | ✦ GUI first-run card in the Console (subscription / API key / local) **and** `urfael setup` CLI wizard |
+| Packaged installer | ✓ | one-line curl | ◐ electron-builder + CI pipeline wired (dmg/AppImage/nsis); signing needs certs |
+| OS coverage | broad | broad | ◐ macOS solid · Linux supported · Windows code-complete (notify/voice branches), unverified |
+
 ## Channels
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|

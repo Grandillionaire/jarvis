@@ -466,6 +466,13 @@ function notifyOwner(text, { speak = true } = {}) {
     // spd-say (speech-dispatcher) / espeak-ng / espeak for speech. Both are best-effort + non-throwing.
     try { const p = spawn('notify-send', ['Urfael', clean], { stdio: 'ignore' }); p.unref(); } catch {}
     if (speak) { try { const c = linuxSpeakCmd(clean); if (c) { const p = spawn(c.bin, c.args, { stdio: 'ignore' }); p.unref(); } } catch {} }
+  } else if (process.platform === 'win32') {
+    // Windows (built-in PowerShell only; CODE-COMPLETE but UNVERIFIED on Windows hardware). Toast notification
+    // via the Windows Runtime, speech via SAPI. Best-effort + non-throwing like the other platforms.
+    const ps = (cmd) => { try { const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', cmd], { stdio: 'ignore', windowsHide: true }); p.unref(); } catch {} };
+    const esc = (s) => s.replace(/'/g, "''"); // PowerShell single-quote escaping (clean already stripped \ and ")
+    ps("[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]|Out-Null;$t=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);$t.GetElementsByTagName('text')[0].AppendChild($t.CreateTextNode('Urfael'))|Out-Null;$t.GetElementsByTagName('text')[1].AppendChild($t.CreateTextNode('" + esc(clean) + "'))|Out-Null;[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Urfael').Show([Windows.UI.Notifications.ToastNotification]::new($t))");
+    if (speak) ps("Add-Type -AssemblyName System.Speech;(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('" + esc(clean) + "')");
   }
   try { bridge.notifyAll(clean).catch(() => {}); } catch {}
 }
