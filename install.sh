@@ -141,6 +141,8 @@ if [ "$OS" = "Darwin" ]; then
 5. ⚠️  Hands/eyes, the autonomous loop, and full permissions are OFF by default.
    Read SECURITY.md, then opt in (URFAEL_YOLO=1 in a sandbox; uncomment MCPs in config/mcp.json.example).
 
+Run  urfael setup  to choose how Urfael reaches Claude (your subscription, an API key, or a local model).
+
 Done. Talk to Urfael: tap the orb (or set a Picovoice key — see WAKE_KEYWORD in tts.env for the wake word).
 NEXT
 
@@ -208,6 +210,8 @@ else
    Tip: to keep --user units running after logout, run:  loginctl enable-linger "\$USER"
 5. ⚠️  Hands/eyes, the autonomous loop, and full permissions are OFF by default.
    Read SECURITY.md, then opt in (URFAEL_YOLO=1 in a sandbox; uncomment MCPs in config/mcp.json.example).
+
+Run  urfael setup  to choose how Urfael reaches Claude (your subscription, an API key, or a local model).
 
 Done. Talk to Urfael: tap the orb (or set a Picovoice key — see WAKE_KEYWORD in tts.env for the wake word).
 NEXT

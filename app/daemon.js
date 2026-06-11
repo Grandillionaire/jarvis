@@ -11,6 +11,21 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
+// Load the user's provider config (~/.claude/urfael/provider.env) into the environment BEFORE anything reads
+// it — so an API key, a custom endpoint, or a model override written by `urfael setup` reaches the claude CLI
+// (and every spawn, via scopedEnv) with no plist/unit editing. KEY=value lines; an explicit shell/unit env
+// wins over the file. The file is 0600 and read via Node fs only (the agent's tools can't reach ~/.claude).
+(function loadProviderEnv() {
+  try {
+    for (const line of fs.readFileSync(path.join(os.homedir(), '.claude', 'urfael', 'provider.env'), 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/);
+      if (!m || line.trim().startsWith('#')) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+    }
+  } catch {}
+})();
 const { MODELS, classifyModel, segmentSentences, resolveProfile } = require('./lib');
 const recall = require('./recall');
 const jobstore = require('./jobstore');

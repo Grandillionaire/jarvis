@@ -108,6 +108,7 @@ The brain is a local daemon reachable only through a `0600` unix socket — **it
 ```bash
 git clone https://github.com/Grandillionaire/urfael.git && cd urfael   # clone anywhere
 ./install.sh        # checks deps, fetches the local speech model (checksum-pinned), scaffolds your vault — no keys
+urfael setup        # onboarding wizard: subscription (default), an API key, or a local model
 cd app && npm start # the Console opens
 ```
 
@@ -121,7 +122,7 @@ brew install ffmpeg whisper-cpp coreutils       # macOS
 The brain uses Claude Code's model **aliases** (`sonnet` for most turns, escalating to `opus` for code & deep reasoning), so it always tracks the latest models your plan supports. Opus needs **Max**; on **Pro**, set `URFAEL_OPUS_MODEL=sonnet`. Full setup — voice tiers, connectors, bridges, Linux — is in [docs/SETUP.md](docs/SETUP.md).
 
 > [!NOTE]
-> **Fair use & your Claude login.** Urfael runs entirely on *your own* `claude` login — it bundles no credentials, stores no tokens, and pools nothing across users. It's an open-source tool for ordinary, individual use. If you want to run it as a shared service or at production scale, use an Anthropic **API key** instead of a subscription. See [SECURITY.md](SECURITY.md) and Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup) and [Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
+> **Fair use & your Claude login.** Urfael runs entirely on *your own* `claude` login — it bundles no credentials, stores no tokens, and pools nothing across users. It's an open-source tool for ordinary, individual use. If you want to run it as a shared service or at production scale, use an Anthropic **API key** instead of a subscription. Don't have a subscription at all? `urfael setup` lets you paste an API key (pay-per-token) instead — same Urfael, metered cost. See [SECURITY.md](SECURITY.md) and Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup) and [Consumer Terms](https://www.anthropic.com/legal/consumer-terms).
 
 ### Using other models
 

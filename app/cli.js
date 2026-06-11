@@ -2,6 +2,7 @@
 'use strict';
 // urfael — talk to the brain from any terminal. A thin client of the daemon's unix socket
 // (same brain, same memory, same warm sessions as the orb). No deps, no API key.
+//   urfael setup                               onboarding wizard — pick subscription / API key / local model
 //   urfael "what's on my calendar today?"      ask (streams the answer live)
 //   urfael status                              vitals: model, latency, turns, tokens, uptime
 //   urfael jobs | job <id> | cancel <id>       background jobs
@@ -134,6 +135,9 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     console.log('usage: urfael skills list | export <name> | scan <file> | install <https-url> [--yes]');
     return;
   }
+
+  // setup: the onboarding wizard (auth mode + provider config). Pure CLI, runs BEFORE ensureDaemon.
+  if (cmd === 'setup' || cmd === 'init' || cmd === 'onboard') { await require('./setup').run(); return; }
 
   // stop is best-effort BEFORE ensureDaemon — never spawn a brain just to abort nothing
   if (cmd === 'stop') { const r = await req('POST', '/abort').catch(() => ({ ok: false })); console.log(r && r.ok ? gold('stopped') : dim('nothing to stop')); return; }
