@@ -1,0 +1,14 @@
+{
+  "_comment": "TEAM / MULTI-OWNER MODE. Copy to ~/.claude/urfael/team.json to let MORE than one person talk to Urfael over a channel. Each principal is an allowlisted id with a role. Roles only NARROW access — a remote turn is NEVER full-power 'local' no matter the role; that stays reserved for the on-machine mic. Editing this file takes effect live (no restart). Without this file, Urfael stays single-owner via the *_OWNER_* ids in bridge.env.",
+  "_roles": "owner = read + search the shared vault (sandboxed, no shell/write/egress) · member = same as owner · guest = read a known path only, NO search/browse of the vault. Unknown/missing role => guest (fail-closed).",
+  "_ids": "Use the same id the bridge already matches: telegram = the chat id, discord/slack = the user id, signal = the uuid, etc. A sender not listed here is DROPPED before the brain ever sees the message.",
+
+  "telegram": [
+    { "id": "111111111", "name": "Maxim", "role": "owner" },
+    { "id": "222222222", "name": "Sam", "role": "member" },
+    { "id": "333333333", "name": "Contractor", "role": "guest" }
+  ],
+  "slack": [
+    { "id": "U0AAAAAAA", "name": "Maxim", "role": "owner" }
+  ]
+}

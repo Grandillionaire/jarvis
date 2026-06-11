@@ -193,3 +193,64 @@ test('cron: bounds clamped — one-shot past rejected, >1y rejected, prompt trun
   const rep = normalizeCron({ prompt: 'recurring', at: '2026-06-10T10:00:00Z', repeat: 'daily' }, NOW);
   assert.ok(rep && rep.repeat === 'daily');
 });
+
+// ---- TEAM / MULTI-OWNER MODE (security kernel) ----
+const { profileFor, buildRoster, resolvePrincipal } = require('../lib');
+
+test('team: a role can only NARROW access — NO role value ever reaches "local"', () => {
+  // every conceivable role input (incl forged/coerced) must map to a remote-sandboxed profile, never local.
+  for (const r of ['owner', 'member', 'guest', 'OWNER', 'local', '', null, undefined, 0, ['owner'], { toString: () => 'owner' }, 'admin', 'root'])
+    assert.notEqual(profileFor(r).name, 'local', JSON.stringify(r));
+});
+
+test('team: owner/member get read+search (untrusted); guest is more restricted (Read only, no search)', () => {
+  assert.equal(profileFor('owner').name, 'untrusted');
+  assert.equal(profileFor('member').name, 'untrusted');
+  assert.deepEqual(profileFor('owner').allowedTools.sort(), ['Glob', 'Grep', 'Read']);
+  const g = profileFor('guest');
+  assert.equal(g.name, 'guest');
+  assert.deepEqual(g.allowedTools, ['Read']);             // no Grep/Glob → cannot browse/search the vault
+  assert.ok(!g.allowedTools.some((t) => /Grep|Glob|Bash|Write|Edit|WebFetch|WebSearch/.test(t)));
+  assert.equal(g.trustFraming, true);
+});
+
+test('team: an unknown/missing/forged role FAILS CLOSED to guest (most restricted)', () => {
+  for (const r of ['', 'admin', 'superuser', null, undefined, 42, {}, []])
+    assert.equal(profileFor(r).name, 'guest', JSON.stringify(r));
+});
+
+test('team: resolvePrincipal allowlist is fail-closed — only a listed id resolves; everyone else is dropped (null)', () => {
+  const roster = { telegram: [{ id: '111', name: 'Maxim', role: 'owner' }, { id: '222', name: 'Sam', role: 'member' }] };
+  assert.equal(resolvePrincipal(roster, 'telegram', '111').name, 'Maxim');
+  assert.equal(resolvePrincipal(roster, 'telegram', '222').role, 'member');
+  assert.equal(resolvePrincipal(roster, 'telegram', '999'), null, 'a stranger is dropped');
+  assert.equal(resolvePrincipal(roster, 'discord', '111'), null, 'right id, wrong channel is dropped');
+  assert.equal(resolvePrincipal(roster, 'telegram', { id: '111' }), null, 'an object id cannot coerce-match');
+  assert.equal(resolvePrincipal(null, 'telegram', '111'), null);
+});
+
+test('team: a listed principal with an unknown role is downgraded to guest (never escalated)', () => {
+  const roster = { telegram: [{ id: '1', name: 'X', role: 'admin' }, { id: '2', name: 'Y' }] };
+  assert.equal(resolvePrincipal(roster, 'telegram', '1').role, 'guest');
+  assert.equal(resolvePrincipal(roster, 'telegram', '2').role, 'guest');
+});
+
+test('team: buildRoster falls back to the single-owner env, and team.json overrides per channel', () => {
+  // env-only → one owner per channel (backward-compatible)
+  const env = buildRoster(null, { telegram: '111', discord: '222' });
+  assert.equal(env.telegram[0].id, '111'); assert.equal(env.telegram[0].role, 'owner');
+  assert.equal(env.discord[0].id, '222');
+  // team.json present for a channel → it is the source of truth for that channel
+  const merged = buildRoster({ telegram: [{ id: 'a', name: 'A', role: 'owner' }, { id: 'b', name: 'B', role: 'guest' }] }, { telegram: '111', discord: '222' });
+  assert.equal(merged.telegram.length, 2);
+  assert.equal(merged.telegram[0].id, 'a');
+  assert.equal(merged.telegram[1].role, 'guest');
+  assert.equal(merged.discord[0].id, '222', 'channels not in team.json keep the env owner');
+});
+
+test('team: buildRoster tolerates junk and dedups ids (fail-soft)', () => {
+  const r = buildRoster({ telegram: [{ id: '1', role: 'owner' }, null, { name: 'no-id' }, { id: '1', role: 'guest' }, { id: 2, name: 'two', role: 'bogus' }] }, {});
+  assert.equal(r.telegram.length, 2, 'null + id-less dropped; duplicate id collapsed');
+  assert.equal(r.telegram[0].id, '1');
+  assert.equal(r.telegram[1].role, 'guest', 'bogus role normalized to guest');
+});

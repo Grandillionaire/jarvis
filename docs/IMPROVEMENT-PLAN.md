@@ -44,7 +44,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 
 **Acceptance.** A paraphrased query with zero shared tokens surfaces the right past turn when an embedder is set; identical BM25 results when it is not; index corruption degrades to BM25; unit tests + `npm run security` green.
 
-## Workstream 2 — Team / multi-owner mode
+## Workstream 2 — Team / multi-owner mode ✅ *(shipped)*
 
 **Gap.** Single hard-coded owner per channel. This blocks the highest-value audience (business), where the security thesis is strongest. Hermes does DM-pairing for many users.
 
@@ -102,7 +102,7 @@ Design rule for everything below: **a feature ships only when it routes through 
 ## Sequencing
 
 1. ~~Workstream 1 (semantic recall)~~ ✅ **shipped** — hybrid BM25+vector (RRF) in recall.js, optional local embedder (embed.js), lazy-backfilled vector index, fail-soft to BM25. **Next: Workstream 2 (team mode).**
-2. **Then:** Workstream 2 (team mode) — unlocks the highest-value audience.
+2. ~~Workstream 2 (team mode)~~ ✅ **shipped** — per-channel roster of allowlisted principals, role-scoped sandbox (a role only narrows, never escalates to local), per-principal attribution + `/audit` trail; telegram is the reference bridge. See [TEAM-MODE.md](TEAM-MODE.md). **Next: Workstream 3 (onboarding/installer/Windows).**
 3. **In parallel with 2:** Workstream 3 (onboarding/installer/Windows) — unlocks reach; independent of the kernels.
 4. **Then:** Workstreams 4 and 5 (safe hub, verified multi-provider) — the category-definers.
 5. **As soon as the demo exists:** Workstream 6 (launch) — does not block on the rest.

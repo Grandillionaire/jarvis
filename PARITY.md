@@ -22,7 +22,7 @@
 |---|---|---|---|
 | Count | 24+ | ~21 adapters | 5 (Telegram, Discord, Slack, iMessage, Email) + notify push |
 | Voice memos | ✓ | ✓ | ✓ (local whisper, never cloud) |
-| Pairing/allowlist security | pairing codes | pairing codes | ✦ owner-allowlist + structural sandbox (read-only, no egress) |
+| Pairing/allowlist security | pairing codes | pairing codes | ✦ **team mode**: per-channel roster of allowlisted principals + roles, role only NARROWS the sandbox (forged role never reaches local), per-principal attribution + `urfael audit` trail. See docs/TEAM-MODE.md |
 | Next | — | — | (Telegram/Discord/Slack/iMessage/Email all shipped; owner-allowlisted + auto-sandboxed) |
 
 ## Memory & recall

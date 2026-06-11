@@ -10,6 +10,8 @@
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
 //   urfael learn [trusted|proposed|retired]    the learning ledger — what it learned, verified, and pruned (with confidence)
+//   urfael team                                team roster — allowlisted principals per channel + roles (edit team.json)
+//   urfael audit [--json]                      team-mode activity trail (who/when/channel/sandbox) for an admin/auditor
 //   urfael cron [add "<prompt>" --daily-at HH:MM | --in N | --repeat daily] [list|cancel <id>|run <id>]
 //                                              scheduled AGENT jobs — runs the brain on a schedule, delivers the result
 //   urfael serve [--token]                     start the OpenAI-compatible local API (Open WebUI / any OpenAI client)
@@ -206,6 +208,29 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     const cj = await req('GET', '/cron');
     if (!cj || !cj.length) { console.log('no scheduled jobs'); return; }
     for (const j of cj) console.log(`${j.id}  ${gold((j.at || '').replace('T', ' ').slice(0, 16))}  ${(j.prompt || '').slice(0, 60)}${j.repeat ? dim('  (' + JSON.stringify(j.repeat) + ')') : ''}`);
+    return;
+  }
+  if (cmd === 'team') {
+    // show the team roster (per-channel allowlisted principals + roles). Read-only; edit ~/.claude/urfael/team.json.
+    const TEAMF = path.join(os.homedir(), '.claude', 'urfael', 'team.json');
+    let team = {}; try { team = JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch {}
+    const chans = Object.keys(team).filter((c) => Array.isArray(team[c]) && team[c].length);
+    if (!chans.length) { console.log(dim('single-owner mode — no team.json. To add teammates, create ' + TEAMF)); console.log(dim('  e.g. { "telegram": [ {"id":"111","name":"Maxim","role":"owner"}, {"id":"222","name":"Sam","role":"member"} ] }')); return; }
+    for (const c of chans) {
+      console.log(gold(c));
+      for (const p of team[c]) { const role = p.role === 'owner' ? gold('owner ') : p.role === 'guest' ? dim('guest ') : 'member'; console.log(`  ${role}  ${dim(String(p.id).slice(0, 16).padEnd(16))}  ${p.name || ''}`); }
+    }
+    return;
+  }
+  if (cmd === 'audit') {
+    // export the team-mode activity trail (who/when/which channel/which sandbox profile) for an admin/auditor.
+    const a = await req('GET', '/audit');
+    if (rest.includes('--json')) { console.log(JSON.stringify(a, null, 2)); return; }
+    if (!a || !a.activity || !a.activity.length) { console.log(dim('no remote (principal) activity recorded yet')); return; }
+    console.log(gold('Remote activity') + dim('  ·  ' + a.activity.length + ' turns (newest first)'));
+    for (const e of a.activity.slice(0, 50)) {
+      console.log(`  ${dim((e.t || '').replace('T', ' ').slice(0, 16))}  ${gold((e.channel || '?').padEnd(8))} ${(e.principal || '—').slice(0, 14).padEnd(14)} ${dim(e.profile || '')}  ${dim('in ' + (e.in || 0) + '/out ' + (e.out || 0))}`);
+    }
     return;
   }
   if (cmd === 'learn') {

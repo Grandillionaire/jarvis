@@ -26,7 +26,7 @@ const crypto = require('crypto');
     }
   } catch {}
 })();
-const { MODELS, classifyModel, segmentSentences, resolveProfile } = require('./lib');
+const { MODELS, classifyModel, segmentSentences, resolveProfile, profileFor } = require('./lib');
 const recall = require('./recall');
 const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
 const jobstore = require('./jobstore');
@@ -237,10 +237,11 @@ const brain = {
   // warm local session, never bypassPermissions. Scoped to the profile's permission mode + tool allowlist +
   // --strict-mcp-config (no computer-use), with the message wrapped in an untrusted-data envelope. Stateless
   // model routing; does NOT touch the local sticky model, so remote traffic can't perturb the voice session.
-  askScoped(text, profile) {
+  askScoped(text, profile, ctx = {}) {
     return new Promise((resolve) => {
-      // FLOOR (defense-in-depth, independent of the caller): a remote turn MUST have an explicit restricted
-      // allowlist + framing and MUST NOT bypass — if anything looks off, fall back to the most-restricted profile.
+      // FLOOR (defense-in-depth, independent of the caller): a remote turn MUST have a NON-EMPTY restricted
+      // allowlist + framing and MUST NOT bypass — if anything looks off, fall back to the most-restricted
+      // profile. (guest's ['Read'] is non-empty by design, so it passes the floor and stays a guest.)
       if (!Array.isArray(profile.allowedTools) || !profile.allowedTools.length || !profile.trustFraming) profile = resolveProfile('untrusted');
       const permMode = (profile.permissionMode && profile.permissionMode !== 'bypassPermissions') ? profile.permissionMode : 'acceptEdits';
       if (inflightScoped.size >= MAX_SCOPED) { resolve({ text: '(busy — too many remote requests in flight; try again in a moment)', model: '' }); return; }
@@ -264,8 +265,8 @@ const brain = {
         clearTimeout(timer); inflightScoped.delete(proc);
         let txt = '';
         try { const j = JSON.parse(out); txt = typeof j.result === 'string' ? j.result : ''; } catch {}
-        logEvent({ ev: 'remote_turn', profile: String(profile.name), model, permissionMode: permMode, allowedTools: profile.allowedTools.join(','), in: text.length, out: txt.length });
-        recordSession({ t: new Date().toISOString(), channel: String(profile.name), model, user: text, urfael: txt });
+        logEvent({ ev: 'remote_turn', channel: ctx.channel || '', principal: ctx.principal || '', role: ctx.role || '', profile: String(profile.name), model, permissionMode: permMode, allowedTools: profile.allowedTools.join(','), in: text.length, out: txt.length });
+        recordSession({ t: new Date().toISOString(), channel: ctx.channel || String(profile.name), principal: ctx.principal || '', role: ctx.role || '', profile: String(profile.name), model, user: text, urfael: txt });
         resolve({ text: txt || '(no reply)', model });
       });
       proc.on('error', () => { clearTimeout(timer); inflightScoped.delete(proc); resolve({ text: '(brain spawn failed)', model }); });
@@ -774,14 +775,17 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     let parsed = {}; try { parsed = JSON.parse(body); } catch {}
     const text = parsed.text || '';
-    // ONLY an absent channel key means the local mic/overlay (full power). Any present value — including
-    // 0/''/null/objects — is resolved by the fail-closed resolver, so it can never coerce its way to local.
-    const profile = resolveProfile('channel' in parsed ? parsed.channel : 'local');
+    // ONLY an absent channel key means the local mic/overlay (full power). Any PRESENT channel is a remote turn:
+    // its profile comes from the principal's ROLE (TEAM MODE), which can only NARROW access — never reach local.
+    // A remote turn is therefore never full-power regardless of a forged role (profileFor returns untrusted|guest).
+    const remote = 'channel' in parsed && parsed.channel;
+    const profile = remote ? profileFor(parsed.role) : resolveProfile('local');
     if (profile.name !== 'local') {
       // remote/untrusted: sandboxed one-shot that runs CONCURRENTLY (its own process) — it never touches the
       // voice stream's `active` nor the serialized local chain, so phone traffic can't block or cross the mic.
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
-      try { const r = await brain.askScoped(text, profile); res.write(JSON.stringify({ kind: 'done', text: r.text, model: r.model }) + '\n'); }
+      const who = typeof parsed.principal === 'string' ? parsed.principal.slice(0, 60) : '';
+      try { const r = await brain.askScoped(text, profile, { channel: String(parsed.channel), principal: who, role: typeof parsed.role === 'string' ? parsed.role : '' }); res.write(JSON.stringify({ kind: 'done', text: r.text, model: r.model }) + '\n'); }
       catch { res.write(JSON.stringify({ kind: 'done', text: '(brain error)', model: '' }) + '\n'); }
       try { res.end(); } catch {}
       return;
@@ -816,6 +820,21 @@ const server = http.createServer(async (req, res) => {
     const items = learn.load(MEMORY_DIR);
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ stats: learn.stats(items), items }));
+  } else if (req.url === '/audit') {
+    // GET /audit — TEAM-MODE transparency for an admin/auditor: the configured roster + the recent remote
+    // (per-principal) activity from the log (who, when, which channel, which sandbox profile). Read-only.
+    let roster = {};
+    try { roster = JSON.parse(fs.readFileSync(path.join(JDIR, 'team.json'), 'utf8')); } catch {}
+    const activity = [];
+    try {
+      for (const ln of tailLines(LOGFILE, 1 << 20).reverse()) {
+        if (activity.length >= 200) break;
+        let e; try { e = JSON.parse(ln); } catch { continue; }
+        if (e && e.ev === 'remote_turn') activity.push({ t: e.t, channel: e.channel || '', principal: e.principal || '', role: e.role || '', profile: e.profile || '', in: e.in || 0, out: e.out || 0 });
+      }
+    } catch {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ roster, activity }));
   } else if (req.method === 'POST' && req.url === '/job') {
     // enqueue a detached background job (runs concurrently with voice — NOT in the serialized chain).
     const body = await readBody(req);

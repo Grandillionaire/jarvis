@@ -89,6 +89,12 @@ async function main() {
   // fail-closed: an attacker can't coerce their channel into the trusted "local" profile
   const coercions = ['LOCAL', 'local ', '', ['local'], { toString: () => 'local' }, 0, { name: 'local' }, null, undefined];
   check('channel resolution is FAIL-CLOSED (can\'t coerce to "local")', coercions.every((c) => lib.resolveProfile(c).name === 'untrusted'), coercions.length + ' coercion attempts → untrusted');
+  // TEAM MODE: a role can only NARROW a remote turn — no role (incl forged) reaches full-power 'local', a guest is
+  // strictly more restricted than a member, and a non-roster sender is dropped, so teammates can't escalate anyone.
+  const roleAttempts = ['owner', 'member', 'guest', 'admin', 'root', 'local', '', null, undefined, ['owner']];
+  check('team mode: NO role escalates a remote turn to "local"', roleAttempts.every((r) => lib.profileFor(r).name !== 'local'), roleAttempts.length + ' role attempts, all sandboxed');
+  check('team mode: a guest is strictly more restricted than a member (no Grep/Glob)', !lib.profileFor('guest').allowedTools.some((t) => /Grep|Glob|Bash|Write|WebFetch/.test(t)) && lib.profileFor('member').allowedTools.includes('Grep'));
+  check('team mode: a non-roster sender is DROPPED (allowlist fail-closed)', lib.resolvePrincipal({ telegram: [{ id: '1', role: 'owner' }] }, 'telegram', '999') === null && lib.resolvePrincipal({ telegram: [{ id: '1', role: 'owner' }] }, 'telegram', '1').role === 'owner');
   // a forged From in an email body can't impersonate an allowlisted sender
   const eb = require(path.join(APP, 'bridge', 'email-bridge.js'));
   const forged = eb.parseFetch(['* 1 FETCH (BODY[HEADER.FIELDS (FROM)] {26}', 'From: attacker@evil.com', '', ' BODY[TEXT] {30}', 'From: owner@allowed.com', ')']);

@@ -7,11 +7,28 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const lib = require('../lib');
 
 const JDIR = path.join(os.homedir(), '.claude', 'urfael');
 const SOCK = path.join(JDIR, 'daemon.sock');
 const ENVF = path.join(JDIR, 'bridge.env');
+const TEAMF = path.join(JDIR, 'team.json');
 const AUDIT = path.join(JDIR, 'bridge-audit.log');
+
+// TEAM MODE — the roster: per-channel allowlist of principals (id/name/role). team.json is the source of truth
+// when present; otherwise the legacy single-owner env id is the lone owner (so existing setups are unchanged).
+const OWNER_ENV = { telegram: 'TELEGRAM_OWNER_CHAT_ID', discord: 'DISCORD_OWNER_USER_ID', slack: 'SLACK_OWNER_USER_ID', imessage: 'IMESSAGE_OWNER_HANDLE', matrix: 'MATRIX_OWNER_USER_ID', signal: 'SIGNAL_OWNER_UUID', whatsapp: 'WHATSAPP_OWNER_NUMBER' };
+function loadRoster() {
+  const cfg = loadEnv();
+  const envOwners = {};
+  for (const ch in OWNER_ENV) if (cfg[OWNER_ENV[ch]]) envOwners[ch] = cfg[OWNER_ENV[ch]];
+  if (cfg.SIGNAL_OWNER_NUMBER && !envOwners.signal) envOwners.signal = cfg.SIGNAL_OWNER_NUMBER;
+  let teamJson = null;
+  try { teamJson = JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch {}
+  return lib.buildRoster(teamJson, envOwners);
+}
+// Resolve a channel sender to an allowlisted principal, or null (=> DROP). Fail-closed (lib.resolvePrincipal).
+function resolvePrincipal(channel, senderId, roster) { return lib.resolvePrincipal(roster || loadRoster(), channel, senderId); }
 
 function loadEnv() {
   const cfg = {};
@@ -27,10 +44,11 @@ function loadEnv() {
 
 function audit(o) { try { fs.appendFileSync(AUDIT, JSON.stringify({ t: new Date().toISOString(), ...o }) + '\n'); } catch {} }
 
-// POST /ask over the unix socket with a channel tag; collapse the NDJSON stream to the final 'done' text.
-function askDaemon(text, channel) {
+// POST /ask over the unix socket with a channel tag (+ optional principal for TEAM MODE: the daemon maps the
+// role to a sandbox profile and attributes the turn). collapse the NDJSON stream to the final 'done' text.
+function askDaemon(text, channel, principal) {
   return new Promise((resolve) => {
-    const payload = JSON.stringify({ text, channel });
+    const payload = JSON.stringify(principal ? { text, channel, role: principal.role, principal: principal.name } : { text, channel });
     const req = http.request({ socketPath: SOCK, method: 'POST', path: '/ask',
       headers: { 'Content-Type': 'application/json' }, timeout: 200000 }, (res) => {
       let buf = '', final = '';
@@ -162,4 +180,4 @@ async function notifyAll(text) {
   if (process.platform === 'darwin' && cfg.IMESSAGE_OWNER_HANDLE) { try { await imessageSend(cfg.IMESSAGE_OWNER_HANDLE, text); } catch {} }
 }
 
-module.exports = { JDIR, SOCK, ENVF, AUDIT, loadEnv, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };
+module.exports = { JDIR, SOCK, ENVF, TEAMF, AUDIT, loadEnv, loadRoster, resolvePrincipal, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };
