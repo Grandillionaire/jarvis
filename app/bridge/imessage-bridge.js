@@ -51,11 +51,11 @@ async function maxRowid() {
   catch { return 0; }
 }
 
-async function handle(text) {
+async function handle(text, principal) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(text, 'imessage'));
-  try { await core.imessageSend(HANDLE, reply); } catch (e) { core.audit({ ev: 'imessage_send_error', err: String((e && e.message) || e) }); }
-  core.audit({ ev: 'imessage_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(text, 'imessage', principal)); // TEAM MODE: role-scoped + attributed
+  try { await core.imessageSend(principal.id, reply); } catch (e) { core.audit({ ev: 'imessage_send_error', err: String((e && e.message) || e) }); }
+  core.audit({ ev: 'imessage_turn', principal: principal.name, role: principal.role, inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 async function main() {
@@ -75,11 +75,15 @@ async function main() {
     await sleep(POLL_SECS * 1000);
     let rows = [];
     try { rows = await rowsSince(last); } catch (e) { core.audit({ ev: 'imessage_poll_error', err: String((e && e.message) || e) }); continue; }
+    // single-handle SQL (bound to HANDLE), so resolve the principal once. True multi-handle imessage = a SQL
+    // follow-up; for now this gives imessage the role + attribution + audit plumbing for the configured handle.
+    const principal = core.resolvePrincipal('imessage', HANDLE);
+    if (!principal) { core.audit({ ev: 'imessage_drop', from: HANDLE }); continue; } // handle not in the roster
     for (const r of rows) {
       last = Math.max(last, r.rowid);
       if (!r.text) continue;
-      if (!bucket.take()) { core.audit({ ev: 'imessage_ratelimited' }); core.imessageSend(HANDLE, 'Rate limited — one sec.').catch(() => {}); continue; }
-      handle(r.text).catch(() => {});
+      if (!bucket.take()) { core.audit({ ev: 'imessage_ratelimited' }); core.imessageSend(principal.id, 'Rate limited — one sec.').catch(() => {}); continue; }
+      handle(r.text, principal).catch(() => {});
     }
   }
 }

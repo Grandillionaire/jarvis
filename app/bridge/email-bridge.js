@@ -329,16 +329,19 @@ async function drain(imap) {
     let mail;
     try { mail = await fetchMail(imap, uid); } catch (e) { core.audit({ ev: 'email_fetch_error', uid, err: String((e && e.message) || e) }); seen(uid); continue; }
     const sender = addrOf(mail.from);
-    // ALLOWLIST, BEFORE the brain. Not allowed => drop, audit, mark processed (fetch hostile mail ONCE, never again).
+    // ALLOWLIST, BEFORE the brain (EMAIL_ALLOWED_SENDERS — already multi-sender). Not allowed => drop, audit,
+    // mark processed (fetch hostile mail ONCE, never again).
     if (!ALLOWED.has(sender)) { core.audit({ ev: 'email_drop', from: sender }); seen(uid); continue; }
-    // Rate-limited: do NOT mark processed — it's the OWNER's own mail; leave it to retry once the bucket refills.
+    // TEAM MODE: assign a role via team.json (channel "email", id = the From address); else a default member.
+    const principal = core.resolvePrincipal('email', sender) || { id: sender, name: sender, role: 'member' };
+    // Rate-limited: do NOT mark processed — it's allowlisted mail; leave it to retry once the bucket refills.
     if (!bucket.take()) { core.audit({ ev: 'email_ratelimited', from: sender }); continue; }
     const t0 = Date.now();
     try {
-      const reply = core.stripSpoken(await core.askDaemon('Subject: ' + mail.subject + '\n\n' + mail.body, 'email'));
+      const reply = core.stripSpoken(await core.askDaemon('Subject: ' + mail.subject + '\n\n' + mail.body, 'email', principal));
       await saveDraft(imap, sender, mail.subject, reply, mail.inReplyTo);
       await markSeen(imap, uid); seen(uid); // only after a draft is safely stored
-      core.audit({ ev: 'email_turn', from: sender, inLen: mail.body.length, outLen: reply.length, ms: Date.now() - t0 });
+      core.audit({ ev: 'email_turn', from: sender, principal: principal.name, role: principal.role, inLen: mail.body.length, outLen: reply.length, ms: Date.now() - t0 });
     } catch (e) { core.audit({ ev: 'email_turn_error', from: sender, err: String((e && e.message) || e) }); } // a failed turn stays UNSEEN+unprocessed → retried
   }
 }

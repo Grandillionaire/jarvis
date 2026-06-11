@@ -10,5 +10,14 @@
   ],
   "slack": [
     { "id": "U0AAAAAAA", "name": "Maxim", "role": "owner" }
+  ],
+  "discord": [
+    { "id": "111111111111111111", "name": "Maxim", "role": "owner" }
+  ],
+  "signal": [
+    { "id": "+15551234567", "name": "Maxim", "role": "owner" }
+  ],
+  "email": [
+    { "id": "sam@company.com", "name": "Sam", "role": "guest" }
   ]
 }

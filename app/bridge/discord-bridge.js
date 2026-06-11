@@ -16,11 +16,11 @@ let ws, hb, seq = null, acked = true, backoff = 1000;
 
 function send(o) { try { ws.send(JSON.stringify(o)); } catch {} }
 
-async function handle(content) {
+async function handle(content, principal) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(content, 'discord'));
-  try { await core.discordDM(TOKEN, OWNER, reply); } catch {}
-  core.audit({ ev: 'discord_turn', inLen: content.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(content, 'discord', principal)); // TEAM MODE: role-scoped + attributed
+  try { await core.discordDM(TOKEN, principal.id, reply); } catch {}                   // reply to the sender, not a fixed owner
+  core.audit({ ev: 'discord_turn', principal: principal.name, role: principal.role, inLen: content.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 function onMessage(p) {
@@ -38,10 +38,11 @@ function onMessage(p) {
     const m = p.d;
     if (m.guild_id) return;                                   // DMs only — ignore guild channels
     if (!m.author || m.author.bot) return;                     // ignore bots / self
-    if (String(m.author.id) !== String(OWNER)) { core.audit({ ev: 'discord_drop', from: m.author && m.author.id }); return; } // ALLOWLIST
+    const principal = core.resolvePrincipal('discord', m.author.id); // ALLOWLIST (roster: team.json + env fallback), before the brain
+    if (!principal) { core.audit({ ev: 'discord_drop', from: m.author && m.author.id }); return; }
     if (!m.content) return;
-    if (!bucket.take()) { core.audit({ ev: 'discord_ratelimited' }); core.discordDM(TOKEN, OWNER, 'Rate limited — one sec.').catch(() => {}); return; }
-    handle(m.content).catch(() => {});
+    if (!bucket.take()) { core.audit({ ev: 'discord_ratelimited', principal: principal.name }); core.discordDM(TOKEN, principal.id, 'Rate limited — one sec.').catch(() => {}); return; }
+    handle(m.content, principal).catch(() => {});
   }
 }
 

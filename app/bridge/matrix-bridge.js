@@ -33,11 +33,11 @@ function send(roomId, text) {
     { msgtype: 'm.text', body: (text || '(empty)').slice(0, 4000) });
 }
 
-async function handle(roomId, text) {
+async function handle(roomId, text, principal) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(text, 'matrix'));
-  try { await send(roomId, reply); } catch {}
-  core.audit({ ev: 'matrix_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(text, 'matrix', principal)); // TEAM MODE: role-scoped + attributed
+  try { await send(roomId, reply); } catch {}                                     // reply to the room the message came from
+  core.audit({ ev: 'matrix_turn', principal: principal.name, role: principal.role, inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 // Walk one /sync response: for each joined room's timeline, relay owner m.text messages. Returns next_batch.
@@ -48,14 +48,15 @@ function drain(sync) {
     const events = (rooms[roomId].timeline && rooms[roomId].timeline.events) || [];
     for (const e of events) {
       if (e.type !== 'm.room.message') continue;
-      if (String(e.sender) !== String(OWNER)) { core.audit({ ev: 'matrix_drop', from: e.sender }); continue; } // ALLOWLIST, before the brain
+      const principal = core.resolvePrincipal('matrix', e.sender); // ALLOWLIST (roster: team.json + env fallback), before the brain
+      if (!principal) { core.audit({ ev: 'matrix_drop', from: e.sender }); continue; }
       const c = e.content || {};
       if (c.msgtype !== 'm.text' || !c.body) continue;     // text only — ignore media/notice
       const rel = c['m.relates_to'] || {};
       if (rel.rel_type === 'm.replace' || c['m.new_content']) continue; // skip EDITS — they re-arrive as m.text and would re-run a past command
       if (typeof c.body === 'string' && c.body.startsWith(' * ')) continue; // edit fallback body
-      if (!bucket.take()) { core.audit({ ev: 'matrix_ratelimited' }); send(roomId, 'Rate limited — one sec.').catch(() => {}); continue; }
-      handle(roomId, c.body).catch(() => {});
+      if (!bucket.take()) { core.audit({ ev: 'matrix_ratelimited', principal: principal.name }); send(roomId, 'Rate limited — one sec.').catch(() => {}); continue; }
+      handle(roomId, c.body, principal).catch(() => {});
     }
   }
   return sync.next_batch;

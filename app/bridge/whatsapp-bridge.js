@@ -27,17 +27,17 @@ const bucket = new core.TokenBucket(8, 20);       // 8 burst, ~20/min sustained 
 const GRAPH = 'graph.facebook.com';
 
 // Send a text message to the owner via the Cloud API. Body capped; token in the Authorization header only.
-function send(text) {
+function send(text, to) {
   return core.httpsJson({ hostname: GRAPH, path: `/v19.0/${PHONE_ID}/messages`, method: 'POST',
     headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json' } },
-    { messaging_product: 'whatsapp', to: OWNER, type: 'text', text: { body: (text || '(empty)').slice(0, 4000) } });
+    { messaging_product: 'whatsapp', to: to || OWNER, type: 'text', text: { body: (text || '(empty)').slice(0, 4000) } });
 }
 
-async function handle(text) {
+async function handle(text, principal) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(text, 'whatsapp'));
-  try { await send(reply); } catch {}
-  core.audit({ ev: 'whatsapp_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(text, 'whatsapp', principal)); // TEAM MODE: role-scoped + attributed
+  try { await send(reply, principal.id); } catch {}                                  // reply to the sender's number
+  core.audit({ ev: 'whatsapp_turn', principal: principal.name, role: principal.role, inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 // Constant-time verify of X-Hub-Signature-256 over the RAW request bytes. Returns false on any mismatch or
@@ -63,9 +63,10 @@ function extractOwnerTexts(payload) {
       const v = ch.value || {};
       for (const m of (v.messages || [])) {
         if (m.type !== 'text' || !m.text || !m.text.body) continue;     // text only
-        const from = String(m.from || '').replace(/[^\d]/g, '');
-        if (from !== OWNER) { core.audit({ ev: 'whatsapp_drop', from }); continue; } // ALLOWLIST, before the brain
-        out.push(m.text.body);
+        const from = String(m.from || '').replace(/[^\d]/g, '');         // E.164 digits, as Meta sends
+        const principal = core.resolvePrincipal('whatsapp', from);       // ALLOWLIST (roster ids are digits), before the brain
+        if (!principal) { core.audit({ ev: 'whatsapp_drop', from }); continue; }
+        out.push({ text: m.text.body, principal });
       }
     }
   }
@@ -103,11 +104,11 @@ function onPost(req, res) {
     res.writeHead(200); res.end('ok');                  // ack fast so Meta doesn't retry; process async
     let payload;
     try { payload = JSON.parse(raw.toString('utf8')); } catch { core.audit({ ev: 'whatsapp_badjson' }); return; }
-    let texts;
-    try { texts = extractOwnerTexts(payload); } catch (e) { core.audit({ ev: 'whatsapp_extract_error', err: String((e && e.message) || e) }); return; }
-    for (const text of texts) {
-      if (!bucket.take()) { core.audit({ ev: 'whatsapp_ratelimited' }); send('Rate limited — one sec.').catch(() => {}); continue; }
-      handle(text).catch(() => {});
+    let msgs;
+    try { msgs = extractOwnerTexts(payload); } catch (e) { core.audit({ ev: 'whatsapp_extract_error', err: String((e && e.message) || e) }); return; }
+    for (const msg of msgs) {
+      if (!bucket.take()) { core.audit({ ev: 'whatsapp_ratelimited', principal: msg.principal.name }); send('Rate limited — one sec.', msg.principal.id).catch(() => {}); continue; }
+      handle(msg.text, msg.principal).catch(() => {});
     }
   });
   req.on('error', () => { try { res.writeHead(400); res.end(); } catch {} });

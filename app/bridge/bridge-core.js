@@ -23,6 +23,7 @@ function loadRoster() {
   const envOwners = {};
   for (const ch in OWNER_ENV) if (cfg[OWNER_ENV[ch]]) envOwners[ch] = cfg[OWNER_ENV[ch]];
   if (cfg.SIGNAL_OWNER_NUMBER && !envOwners.signal) envOwners.signal = cfg.SIGNAL_OWNER_NUMBER;
+  if (envOwners.whatsapp) envOwners.whatsapp = String(envOwners.whatsapp).replace(/[^\d]/g, ''); // match Meta's E.164 digits
   let teamJson = null;
   try { teamJson = JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch {}
   return lib.buildRoster(teamJson, envOwners);

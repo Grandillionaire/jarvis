@@ -17,11 +17,11 @@ let ws, backoff = 1000;
 
 function send(o) { try { ws.send(JSON.stringify(o)); } catch {} }
 
-async function handle(channel, text) {
+async function handle(channel, text, principal) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(text, 'slack'));
-  try { await core.slackPost(BOT_TOKEN, channel, reply); } catch {}
-  core.audit({ ev: 'slack_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(text, 'slack', principal)); // TEAM MODE: role-scoped + attributed
+  try { await core.slackPost(BOT_TOKEN, channel, reply); } catch {}               // channel = the sender's DM
+  core.audit({ ev: 'slack_turn', principal: principal.name, role: principal.role, inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 function onMessage(p) {
@@ -33,10 +33,11 @@ function onMessage(p) {
   if (e.type !== 'message') return;
   if (e.bot_id || e.subtype) return;                                    // ignore bots/self/edits/joins
   if (e.channel_type !== 'im') return;                                  // DMs only
-  if (String(e.user) !== String(OWNER)) { core.audit({ ev: 'slack_drop', from: e.user }); return; } // ALLOWLIST
+  const principal = core.resolvePrincipal('slack', e.user); // ALLOWLIST (roster: team.json + env fallback), before the brain
+  if (!principal) { core.audit({ ev: 'slack_drop', from: e.user }); return; }
   if (!e.text) return;
-  if (!bucket.take()) { core.audit({ ev: 'slack_ratelimited' }); core.slackPost(BOT_TOKEN, e.channel, 'Rate limited — one sec.').catch(() => {}); return; }
-  handle(e.channel, e.text).catch(() => {});
+  if (!bucket.take()) { core.audit({ ev: 'slack_ratelimited', principal: principal.name }); core.slackPost(BOT_TOKEN, e.channel, 'Rate limited — one sec.').catch(() => {}); return; }
+  handle(e.channel, e.text, principal).catch(() => {});
 }
 
 async function connect() {

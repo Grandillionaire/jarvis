@@ -23,18 +23,18 @@ function cliPresent() {
 }
 
 // Send a text reply to the owner number. -m carries the body; recipient is the LAST arg. Never logs the body.
-function send(text) {
+function send(text, to) {
   return new Promise((resolve) => {
-    execFile(CLI, ['-a', ACCOUNT, 'send', '-m', (text || '(empty)').slice(0, 4000), OWNER],
+    execFile(CLI, ['-a', ACCOUNT, 'send', '-m', (text || '(empty)').slice(0, 4000), to || OWNER],
       { timeout: 60000 }, (err) => { if (err) core.audit({ ev: 'signal_send_error', err: String((err && err.message) || err) }); resolve(); });
   });
 }
 
-async function handle(text) {
+async function handle(text, principal, to) {
   const t0 = Date.now();
-  const reply = core.stripSpoken(await core.askDaemon(text, 'signal'));
-  await send(reply);
-  core.audit({ ev: 'signal_turn', inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
+  const reply = core.stripSpoken(await core.askDaemon(text, 'signal', principal)); // TEAM MODE: role-scoped + attributed
+  await send(reply, to);                                                           // reply to the sender's number/source
+  core.audit({ ev: 'signal_turn', principal: principal.name, role: principal.role, inLen: text.length, outLen: reply.length, ms: Date.now() - t0 });
 }
 
 // Parse one JSON line from `receive --json` -> relay an owner dataMessage. signal-cli wraps everything in an
@@ -48,12 +48,12 @@ function onLine(line) {
   if (!dm || !dm.message) return;                          // text dataMessages only — ignore receipts/typing/sync
   const from = e.sourceNumber || e.source;
   const uuid = (e.sourceUuid || '').toLowerCase();
-  // ALLOWLIST, before the brain: match the E.164 number OR (if configured) the account UUID — newer signal-cli
-  // builds may carry only sourceUuid, so accepting either keeps a legit owner message from being silently dropped.
-  const isOwner = String(from) === String(OWNER) || (OWNER_UUID && uuid === OWNER_UUID);
-  if (!isOwner) { core.audit({ ev: 'signal_drop', from: from || uuid }); return; }
-  if (!bucket.take()) { core.audit({ ev: 'signal_ratelimited' }); send('Rate limited — one sec.').catch(() => {}); return; }
-  handle(dm.message).catch(() => {});
+  // ALLOWLIST (roster: team.json + env fallback), before the brain: a principal may be listed by E.164 number
+  // OR by uuid — newer signal-cli builds may carry only sourceUuid, so we resolve against either.
+  const principal = core.resolvePrincipal('signal', from) || (uuid && core.resolvePrincipal('signal', uuid));
+  if (!principal) { core.audit({ ev: 'signal_drop', from: from || uuid }); return; }
+  if (!bucket.take()) { core.audit({ ev: 'signal_ratelimited', principal: principal.name }); send('Rate limited — one sec.', from).catch(() => {}); return; }
+  handle(dm.message, principal, from).catch(() => {});
 }
 
 // Spawn `receive --json` and stream-parse its stdout line by line. Resolves when the child exits so the caller

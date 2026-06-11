@@ -44,6 +44,10 @@ urfael audit --json    # the same, machine-readable, for an SIEM / a compliance 
 
 Combined with `npm run security` (the 7/7 benchmark, now including the team-mode escalation checks) and [docs/THREAT-MODEL.md](THREAT-MODEL.md), that's the package you hand a security team: *here is who can reach it, what each can do, the structural proof they can't escalate, and the log of what they did.*
 
-## Status
+## Channel support
 
-Telegram is the reference multi-principal bridge (full roster + reply-to-sender). The kernel (`lib.profileFor` / `resolvePrincipal` / `buildRoster`), the daemon scoping + `/audit`, and the roster loader are channel-agnostic, so the other bridges adopt it by switching their single-owner check to `core.resolvePrincipal(channel, senderId)` — tracked as a fast-follow.
+**All 8 bridges** route through the roster now: telegram, discord, slack, whatsapp, matrix, signal, email, and iMessage. Each resolves its sender to a principal (`core.resolvePrincipal(channel, id)`), relays the turn role-scoped + attributed, and replies to the actual sender (matrix replies to the originating room; email drafts a reply to the From; iMessage stays single-handle — its chat.db query is bound to one handle, so it gets roles + attribution but true multi-handle is a SQL follow-up).
+
+ID formats per channel: telegram = chat id · discord/slack = user id · whatsapp/signal = E.164 number (signal also accepts the uuid) · matrix = `@you:server` · email = the From address (gate stays `EMAIL_ALLOWED_SENDERS`; team.json assigns roles) · iMessage = the handle.
+
+Honest caveat: the kernel + roster + daemon scoping + audit are unit-tested and benchmark-verified, but the **live relay of each bridge is not exercised by the test suite** (it needs real accounts — the same paths the e2e harness SKIPs). The changes mirror the verified telegram reference and are syntax- + sandbox-checked.
