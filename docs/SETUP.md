@@ -84,7 +84,7 @@ no writes, no shell, no web) — see SECURITY.md. Web lookup / phone capture are
    transcript is echoed back so you see what was heard). Only your single allowlisted id is ever answered; everyone else is dropped before the brain
    sees anything. Every turn is appended to `~/.claude/urfael/bridge-audit.log` and rate-limited.
 
-Once a bridge is configured, autonomous jobs and the morning brief also **push to your phone** when they
+Once a bridge is configured, autonomous jobs and the morning brief also **push to a chat channel** (Telegram/Discord/Slack/iMessage) when they
 finish (one-way, owner-only — there's no way to make it message anyone else).
 
 ## 7. The `urfael` terminal command
@@ -102,7 +102,7 @@ Conversations from every surface (orb, CLI, phone) are archived per-day as JSONL
 ## 8. Reminders & heartbeat (the proactive layer)
 
 **Reminders need zero setup.** Say "remind me in 20 minutes to call Stefan" (or type it) — Urfael schedules
-it in the daemon and it fires as a macOS notification + spoken aloud + a phone push (if a bridge is
+it in the daemon and it fires as a macOS notification + spoken aloud + a chat-channel push (if a bridge is
 configured), even with every window closed. Reminders persist across daemon restarts. Inspect them:
 ```bash
 curl -s --unix-socket ~/.claude/urfael/daemon.sock http://x/reminders
