@@ -303,10 +303,11 @@ test('mode: FORTRESS is the default — owner/member remote turns stay read-only
   }
 });
 
-test('mode: FULL widens owner/member to web+write (Hermes-level) — but NEVER a shell, bypass, or unframed', () => {
+test('mode: FULL widens owner/member to WEB+SEARCH reach — but NO write, shell, bypass, or unframed', () => {
   const p = profileFor('member', 'full');
   assert.equal(p.name, 'full');
-  assert.ok(p.allowedTools.includes('WebFetch') && p.allowedTools.includes('Write') && p.allowedTools.includes('Grep'));
+  assert.ok(p.allowedTools.includes('WebFetch') && p.allowedTools.includes('WebSearch') && p.allowedTools.includes('Grep'), 'web + search + read');
+  assert.ok(!p.allowedTools.some((t) => /Write|Edit/.test(t)), 'FULL mode has NO Write/Edit (acceptEdits is not a cwd jail -> a write could escape the vault)');
   assert.ok(!p.allowedTools.some((t) => /Bash/.test(t)), 'FULL mode still has NO unsandboxed shell');
   assert.equal(p.permissionMode, 'acceptEdits'); assert.notEqual(p.permissionMode, 'bypassPermissions');
   assert.equal(p.trustFraming, true, 'remote content is still untrusted-framed in full mode');

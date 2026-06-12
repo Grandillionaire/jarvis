@@ -94,7 +94,7 @@ const LOCAL_MODE = !!process.env.ANTHROPIC_BASE_URL || process.env.CLAUDE_CODE_U
 // to web+write+search (Hermes-level reach) while still keeping no-shell, no-bypass, framing, and the credential
 // deny. It is the daemon's env — a remote sender can NEVER select it. Anything but 'full' is Fortress.
 const AGENT_MODE = String(process.env.URFAEL_MODE || 'fortress').toLowerCase() === 'full' ? 'full' : 'fortress';
-if (AGENT_MODE === 'full') { try { logEvent({ ev: 'WARN', msg: 'URFAEL_MODE=full — remote owner/member turns can browse the web + write files (still sandboxed: no shell, no bypass, credential-deny holds).' }); } catch {} }
+if (AGENT_MODE === 'full') { try { logEvent({ ev: 'WARN', msg: 'URFAEL_MODE=full — remote owner/member turns can browse the web (still sandboxed: no write, no shell, no bypass, credential-deny holds).' }); } catch {} }
 
 // the in-flight /ask response stream — brain events are written to it as NDJSON
 let active = null;

@@ -109,7 +109,8 @@ async function main() {
   // FORTRESS (secure) is the DEFAULT; FULL is an owner-only opt-in that widens reach but never grants a shell,
   // a bypass, or an unframed remote — so even the "do what Hermes does" mode stays safer than an unsandboxed default.
   check('FORTRESS is the default: with no URFAEL_MODE, a remote owner is read-only / no egress', !lib.profileFor('owner').allowedTools.some((t) => /WebFetch|WebSearch|Write|Bash/.test(t)) && lib.profileFor('owner').name === 'untrusted', 'secure by default');
-  check('FULL mode never grants a shell, a bypass, or an unframed remote', (() => { const p = lib.profileFor('owner', 'full'); return !p.allowedTools.some((t) => /Bash/.test(t)) && p.permissionMode !== 'bypassPermissions' && p.trustFraming === true; })(), 'no shell / no bypass / still framed, even at full reach');
+  check('FULL mode never grants Write/Edit, a shell, a bypass, or an unframed remote', (() => { const p = lib.profileFor('owner', 'full'); return !p.allowedTools.some((t) => /Write|Edit|Bash/.test(t)) && p.permissionMode !== 'bypassPermissions' && p.trustFraming === true; })(), 'no write/shell/bypass; still framed (a remote Write could escape the vault)');
+  check('FULL mode widens only owner/member — a guest is NOT widened by Full', lib.profileFor('member', 'full').name === 'full' && lib.profileFor('guest', 'full').name === 'guest', 'guest stays Read-only in every mode');
   // a forged From in an email body can't impersonate an allowlisted sender
   const eb = require(path.join(APP, 'bridge', 'email-bridge.js'));
   const forged = eb.parseFetch(['* 1 FETCH (BODY[HEADER.FIELDS (FROM)] {26}', 'From: attacker@evil.com', '', ' BODY[TEXT] {30}', 'From: owner@allowed.com', ')']);
@@ -151,6 +152,7 @@ async function main() {
   // heartbeat (which reads untrusted email/calendar) runs with NO egress tool.
   const vaultSettings = fs.readFileSync(path.join(APP, '..', 'vault-template', '_urfael', 'settings.json'), 'utf8');
   check('the vault DENIES the agent reading credential stores (~/.claude, ~/.ssh, ~/.aws)', /"deny"/.test(vaultSettings) && /Read\(~\/\.claude\/\*\*\)/.test(vaultSettings) && /Read\(~\/\.ssh\/\*\*\)/.test(vaultSettings), 'permissions.deny — beats the permission mode');
+  check('the vault DENIES WRITING to ~/.claude + dotfiles + LaunchAgents (no settings-rewrite / RCE / persistence)', /Write\(~\/\.claude\/\*\*\)/.test(vaultSettings) && /Write\(~\/\.zshrc\)/.test(vaultSettings) && /Write\(~\/Library\/LaunchAgents\/\*\*\)/.test(vaultSettings), 'write-deny: the credential-deny rules can\'t be rewritten away');
   const daemonSrc = fs.readFileSync(path.join(APP, 'daemon.js'), 'utf8');
   const hbBlock = daemonSrc.slice(daemonSrc.indexOf('async function heartbeat'), daemonSrc.indexOf('function distill'));
   check('the heartbeat (reads untrusted email) has NO egress tool', hbBlock.includes('--disallowedTools') && hbBlock.includes('WebFetch') && hbBlock.includes('WebSearch') && hbBlock.includes("'Bash'"), 'WebFetch/WebSearch/Bash disallowed');

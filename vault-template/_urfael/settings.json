@@ -1,6 +1,6 @@
 {
   "_comment": "Project-scoped Claude Code settings for the Urfael vault. The Stop hook speaks the reply via ElevenLabs when you run `claude` directly in this vault (the overlay/daemon does its own TTS and sets URFAEL_OVERLAY=1 to suppress this).",
-  "_security": "permissions.deny is a HARD boundary in Claude Code: it beats allow rules AND the permission mode (acceptEdits/bypassPermissions), and a Read() deny also covers Grep/Glob. Every claude session the daemon spawns runs in this vault, so these rules block the AGENT (heartbeat, cron, jobs, distill, even a YOLO turn) from reading your credential stores — so a prompt-injected instruction to 'read a secret and send it out' has nothing to read. The daemon still reads bridge.env via Node fs; this only constrains the model's file tools.",
+  "_security": "permissions.deny is a HARD boundary in Claude Code: it beats allow rules AND the permission mode (acceptEdits/bypassPermissions), and a Read() deny also covers Grep/Glob. Every claude session the daemon spawns runs in this vault, so these rules block the AGENT (heartbeat, cron, jobs, distill, even a YOLO or FULL-mode turn) from READING your credential stores AND from WRITING anywhere dangerous. The Write/Edit denies are critical: acceptEdits is not a cwd jail, so without them an injected turn could write ~/.zshrc (shell RCE), a LaunchAgent (persistence), or overwrite ~/.claude/settings.json to STRIP these very rules and then read+exfil the credentials. Denying Write to ~/.claude protects the rules themselves. The daemon still reads bridge.env via Node fs; this only constrains the model's file tools.",
   "permissions": {
     "deny": [
       "Read(~/.claude/**)",
@@ -10,7 +10,17 @@
       "Read(~/.config/gcloud/**)",
       "Read(~/.netrc)",
       "Read(~/.npmrc)",
-      "Read(~/.git-credentials)"
+      "Read(~/.git-credentials)",
+      "Write(~/.claude/**)", "Edit(~/.claude/**)",
+      "Write(~/.ssh/**)", "Edit(~/.ssh/**)",
+      "Write(~/.aws/**)", "Edit(~/.aws/**)",
+      "Write(~/.gnupg/**)",
+      "Write(~/.zshrc)", "Edit(~/.zshrc)", "Write(~/.zprofile)", "Edit(~/.zprofile)",
+      "Write(~/.bashrc)", "Edit(~/.bashrc)", "Write(~/.bash_profile)", "Edit(~/.bash_profile)", "Write(~/.profile)", "Edit(~/.profile)",
+      "Write(~/.config/**)", "Edit(~/.config/**)",
+      "Write(~/Library/LaunchAgents/**)", "Edit(~/Library/LaunchAgents/**)",
+      "Write(~/Library/LaunchDaemons/**)",
+      "Write(~/bin/**)", "Write(~/.local/bin/**)"
     ]
   },
   "hooks": {

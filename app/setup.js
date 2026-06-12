@@ -163,11 +163,11 @@ async function run() {
     p('');
     p('  ' + bold('Mode for remote (chat) turns?') + dim('   (current: ' + (cur.URFAEL_MODE === 'full' ? 'full' : 'fortress') + ')'));
     p('    ' + gold('1') + ')  Fortress  ' + dim('— recommended. Remote turns are read-only, no web, no write. Smallest blast radius.'));
-    p('    ' + gold('2') + ')  Full      ' + dim('— remote owner/member can browse the web + write files (Hermes-level). Still no shell,'));
-    p('         ' + dim('no bypass, still framed, and credential files stay denied — so even Full is safer than Hermes default.'));
+    p('    ' + gold('2') + ')  Full      ' + dim('— remote owner/member can browse + search the web (web reach). Still no write/shell/bypass,'));
+    p('         ' + dim('still framed, and credential files stay denied (read + write) — so even Full is safer than Hermes default.'));
     delete next.URFAEL_MODE;
     const mpick = await io.ask('  Choose ' + gold('[1-2]') + ' (Enter = 1, Fortress): ');
-    if (/^2/.test(mpick)) { next.URFAEL_MODE = 'full'; p('  ' + warn('Full mode set.') + ' ' + dim('Remote turns can now reach the web + write. You can switch back anytime.')); }
+    if (/^2/.test(mpick)) { next.URFAEL_MODE = 'full'; p('  ' + warn('Full mode set.') + ' ' + dim('Remote turns can now reach the web. You can switch back anytime.')); }
     else p('  ' + ok('Fortress (secure default).'));
 
     writeEnv(next);
