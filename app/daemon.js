@@ -28,6 +28,7 @@ const crypto = require('crypto');
 })();
 const { MODELS, classifyModel, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk } = require('./lib');
 const recall = require('./recall');
+const ridx = require('./recall-index');         // persistent BM25 inverted index — recall AT SCALE (FTS5-equivalent)
 const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
 const jobstore = require('./jobstore');
 const runner = require('./runner');
@@ -397,6 +398,60 @@ function loadSessions() {
     }
   }
   return out;
+}
+
+// ---- recall AT SCALE: a warm, persistent BM25 inverted index over the WHOLE archive --------------------
+// The legacy loadSessions()+rank above is kept only as a FAIL-SOFT fallback. Normally /recall queries this
+// index: built once, kept warm in this process, persisted to disk, and caught up INCREMENTALLY by a per-file
+// BYTE watermark — so a query never rescans the corpus and history past the old line-cap stays searchable.
+const INDEX_FILE = path.join(MEMORY_DIR, '.recall-index.json');
+const INDEX_MAX = 300000;                          // soft doc cap so an always-on daemon can't grow unbounded
+let recallIndex = null, recallIndexDirty = false;
+function loadRecallIndex() {
+  if (recallIndex) return recallIndex;
+  try { recallIndex = ridx.deserialize(fs.readFileSync(INDEX_FILE, 'utf8')); } catch {}
+  if (!recallIndex) recallIndex = ridx.create();
+  return recallIndex;
+}
+// Ingest only the NEW bytes of one session file (from the stored watermark to EOF), stopping at the last
+// complete line. Positional read → O(new bytes), not O(file). Re-reads from 0 if the file shrank/rotated.
+function ingestFileTail(idx, fileAbs, name) {
+  let st; try { st = fs.statSync(fileAbs); } catch { return false; }
+  let from = idx.files[name] || 0;
+  if (from > st.size) from = 0;                    // rotated/truncated → reindex this file from the start
+  if (from >= st.size) return false;               // nothing new
+  let fd = null, added = false;
+  try {
+    fd = fs.openSync(fileAbs, 'r');
+    const len = st.size - from;
+    const buf = Buffer.allocUnsafe(len);
+    fs.readSync(fd, buf, 0, len, from);
+    const text = buf.toString('utf8');
+    const lastNl = text.lastIndexOf('\n');
+    if (lastNl < 0) return false;                  // no complete new line yet — wait for the next refresh
+    const complete = text.slice(0, lastNl);
+    for (const ln of complete.split('\n')) {
+      if (!ln) continue;
+      if (idx.docs.length >= INDEX_MAX) { logEvent({ ev: 'recall_index_cap', docs: idx.docs.length }); break; }
+      let e; try { e = JSON.parse(ln); } catch { continue; }
+      ridx.addDoc(idx, e); added = true;
+    }
+    idx.files[name] = from + Buffer.byteLength(complete, 'utf8') + 1;   // advance past the complete lines (+1 = '\n')
+  } catch {} finally { try { if (fd != null) fs.closeSync(fd); } catch {} }
+  return added;
+}
+function refreshRecallIndex() {
+  const idx = loadRecallIndex();
+  let files; try { files = fs.readdirSync(SESSIONS_DIR).filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)).sort(); } catch { return idx; } // ASC → docId is chronological (newer = higher id)
+  for (const name of files) {
+    if (idx.docs.length >= INDEX_MAX) break;
+    if (ingestFileTail(idx, path.join(SESSIONS_DIR, name), name)) recallIndexDirty = true;
+  }
+  return idx;
+}
+function persistRecallIndex() {
+  if (!recallIndex || !recallIndexDirty) return;
+  try { const tmp = INDEX_FILE + '.tmp'; fs.writeFileSync(tmp, ridx.serialize(recallIndex)); fs.renameSync(tmp, INDEX_FILE); recallIndexDirty = false; } catch {}
 }
 
 // ---- semantic recall: optional vector sidecar (only when an embedder is configured) -------------------
@@ -924,24 +979,32 @@ const server = http.createServer(async (req, res) => {
     logEvent({ ev: 'job_create', id: job.id, kind: spec.kind });
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ id: job.id, state: 'running' }));
   } else if (req.url && req.url.startsWith('/recall')) {
-    // GET /recall?q=<query>&k=<n> — BM25-ranked recall over the recent session archive (bounded reads,
-    // never outside SESSIONS_DIR, never shells out). Empty/absent q -> []; k clamped 1..50.
+    // GET /recall?q=<query>&k=<n> — BM25-ranked recall over the WHOLE archive via the warm inverted index
+    // (O(query terms), incremental catch-up; never rescans). Empty/absent q -> []; k clamped 1..50. With an
+    // embedder configured, the index's BM25 shortlist is re-ranked semantically (RRF). Fail-soft to the legacy scan.
     let q = '', k = 20;
     try { const u = new URL(req.url, 'http://x'); q = (u.searchParams.get('q') || '').slice(0, 500); k = Math.min(Math.max(parseInt(u.searchParams.get('k'), 10) || 20, 1), 50); } catch {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     if (!q.trim()) { res.end('[]'); return; }
-    const entries = loadSessions();
     let ranked;
-    if (embed.enabled()) {
-      // hybrid: fuse BM25 with semantic cosine (RRF). Fail-soft — any embedder hiccup → pure BM25.
-      try {
-        const store = loadVecStore();
-        const entryVecs = await ensureVectors(entries, store);
-        const qv = await embed.embed([q]);
-        ranked = recall.rankHybrid(entries, q, { k, queryVec: qv && qv[0], entryVecs });
-      } catch { ranked = recall.rank(entries, q, k); }
-    } else {
-      ranked = recall.rank(entries, q, k); // no embedder configured → lexical BM25, unchanged
+    try {
+      const idx = refreshRecallIndex();                    // cheap if nothing new since the last query
+      const shortlist = ridx.entriesFor(idx, ridx.query(idx, q, embed.enabled() ? 200 : k)); // top BM25 from the index
+      if (embed.enabled() && shortlist.length) {
+        // re-rank only the shortlist semantically (bounded embed work) and fuse via RRF. Any hiccup → BM25 order.
+        try {
+          const store = loadVecStore();
+          const entryVecs = await ensureVectors(shortlist, store);
+          const qv = await embed.embed([q]);
+          ranked = recall.rankHybrid(shortlist, q, { k, queryVec: qv && qv[0], entryVecs });
+        } catch { ranked = shortlist.slice(0, k); }
+      } else {
+        ranked = shortlist.slice(0, k);                    // index BM25 already top-k, score-ordered
+      }
+    } catch {
+      // FAIL-SOFT: if the index is unavailable, fall back to the legacy bounded scan so recall never breaks.
+      const entries = loadSessions();
+      ranked = recall.rank(entries, q, k);
     }
     res.end(JSON.stringify(ranked.map((e) => ({ t: e.t, channel: e.channel || '', user: e.user || '', urfael: e.urfael || '', score: e.score }))));
   } else if (req.url === '/jobs') {
@@ -1042,7 +1105,7 @@ function listen() {
   try {
     const gi = path.join(MEMORY_DIR, '.gitignore'); const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
     let add = '';
-    for (const name of ['.learned.json', '.recall-vectors.jsonl']) if (!cur.includes(name) && !add.includes(name)) add += name + '\n';
+    for (const name of ['.learned.json', '.recall-vectors.jsonl', '.recall-index.json']) if (!cur.includes(name) && !add.includes(name)) add += name + '\n';
     if (add) fs.appendFileSync(gi, (cur && !cur.endsWith('\n') ? '\n' : '') + add);
   } catch {}
   server.listen(SOCK, () => {
@@ -1053,6 +1116,10 @@ function listen() {
     scheduler.startCron(deliverCron); // re-arm persisted cron jobs; ticked in the same scheduler interval
     if (HB_MINS) { lastBeat = Date.now(); const t = setInterval(heartbeat, 60000); if (t.unref) t.unref(); } // first beat ~HB_MINS after boot
     if (CURATOR_DAYS) { const t = setInterval(curate, 30 * 60000); if (t.unref) t.unref(); } // every 30min the curator re-checks its N-day cadence + busy state
+    // recall index: build/catch-up off the hot path (a first build over a huge archive shouldn't block serving),
+    // then persist dirty state every 60s so a restart loads it instead of re-tokenizing the whole archive.
+    setTimeout(() => { try { refreshRecallIndex(); persistRecallIndex(); } catch {} }, 1500);
+    { const t = setInterval(persistRecallIndex, 60000); if (t.unref) t.unref(); }
   });
 }
 // single-instance: if a daemon already answers on the socket, don't double-run (safe for launchd + overlay both trying)
@@ -1060,5 +1127,5 @@ const probe = http.request({ socketPath: SOCK, method: 'GET', path: '/health', t
 probe.on('error', listen);
 probe.on('timeout', () => { probe.destroy(); listen(); });
 probe.end();
-function shutdown() { for (const s of sessions.values()) { try { s.proc && s.proc.kill('SIGKILL'); } catch {} } for (const p of inflightScoped) { try { p.kill('SIGKILL'); } catch {} } try { fs.unlinkSync(SOCK); } catch {} process.exit(0); }
+function shutdown() { try { persistRecallIndex(); } catch {} for (const s of sessions.values()) { try { s.proc && s.proc.kill('SIGKILL'); } catch {} } for (const p of inflightScoped) { try { p.kill('SIGKILL'); } catch {} } try { fs.unlinkSync(SOCK); } catch {} process.exit(0); }
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);

@@ -36,7 +36,7 @@
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Curated memory file(s) | MEMORY.md + daily notes | MEMORY.md (2.2k cap) + USER.md | ✦ MEMORY/USER/LESSONS/WORKFLOW, no hard cap, git-versioned |
-| Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ **hybrid recall**: BM25 + optional local semantic vectors fused via RRF (daemon /recall); paraphrases with zero shared tokens surface; fail-soft to BM25; no cloud, no index to corrupt |
+| Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ **hybrid recall at scale**: a persistent BM25 **inverted index** (the FTS5-equivalent, pure-JS, no native dep) — built once, kept warm, persisted, caught up INCREMENTALLY by a per-file byte watermark, covering the **whole archive** (not a tail window) with O(query-term) lookups; the BM25 shortlist is re-ranked by optional local semantic vectors via RRF (paraphrases with zero shared tokens surface); fail-soft to a bounded scan, no cloud, no DB to corrupt |
 | Consolidation | "dreaming" pass | post-turn background review | ✓ end-of-conversation distill (cheaper; per-turn review planned as opt-in) |
 | User modeling | — | Honcho dialectic | ◐ USER.md auto-curated (no per-turn dialectic) |
 
@@ -112,5 +112,5 @@ REMAINING (deliberate non-goals in *italic*, real-but-optional otherwise):
 2. *Serverless exec backends (Modal/Daytona)* — paid third-party infra; SSH covers remote.
 3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — low value per unit, each unverified without an account.
 4. Honcho-style per-turn dialectic user modeling (USER.md covers the durable model).
-5. Windows port; richer TUI (modal pickers, live multi-session); embedding recall over BM25.
+5. Windows port; richer TUI (modal pickers, live multi-session). ~~embedding recall over BM25~~ and ~~recall-at-scale~~ shipped (persistent inverted index + RRF vector re-rank).
 6. *Battle-testing at scale* — only real users and time add this.

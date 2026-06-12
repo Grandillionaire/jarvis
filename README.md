@@ -213,7 +213,7 @@ A spoken wake word is optional via Picovoice — any built-in keyword works out 
 
 ## Memory & recall
 
-The vault holds its knowledge; a private git repo holds what it learns. Every conversation, from every surface, is archived as plain JSONL and **ranked with BM25** on recall — `urfael sessions search <query>` from any terminal, or the brain greps its own history when you ask. An end-of-conversation pass distills durable memory, lessons, and a `USER.md` model of who you are; an opt-in per-turn review and an N-day skill curator keep it sharp.
+The vault holds its knowledge; a private git repo holds what it learns. Every conversation, from every surface, is archived as plain JSONL and recalled through a **persistent BM25 inverted index** — the FTS5-equivalent in pure dependency-free JS: built once, kept warm in the daemon, persisted to disk, and caught up incrementally so a query never rescans the corpus and the **whole** archive stays searchable (not just a recent window). With a local embedder configured, the lexical shortlist is re-ranked by semantic vectors via RRF, so a paraphrase with zero shared words still surfaces — and it fails soft to a bounded scan, never breaking. `urfael sessions search <query>` from any terminal, or the brain searches its own history when you ask. An end-of-conversation pass distills durable memory, lessons, and a `USER.md` model of who you are; an opt-in per-turn review and an N-day skill curator keep it sharp.
 
 ## Autonomous coding
 
