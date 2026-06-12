@@ -21,6 +21,7 @@
 //                                              register a webhook (prints the secret once). relay = two-way chat channel: any platform
 //                                              with an in/out webhook (Teams/Mattermost/Zapier/n8n/…) → the reply posts to --reply-url
 //   urfael hook [list | rm <id>]               list / remove webhook event triggers
+//   urfael script add <name> "<shell>" | run <name> [args…] | list | rm <name>   reusable owner scripts (the trustworthy execute_code; needs URFAEL_SCRIPT_CRON=1)
 //   urfael import [--from openclaw|hermes] [--apply]   migrate memory + skills from another assistant (dry-run by default)
 //   urfael skills list                         your installed skills (name + description)
 //   urfael skills export <name>                print a skill to stdout to share it
@@ -291,6 +292,26 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     const hs = await req('GET', '/hooks');
     if (!hs || !hs.length) { console.log(dim('no webhooks yet — create one:  ') + gold('urfael hook add "my trigger"')); return; }
     for (const h of hs) console.log(`${gold(h.id)}  ${dim((h.action + '/' + h.deliver).padEnd(14))} ${h.name}`);
+    return;
+  }
+  if (cmd === 'script') {
+    // the saved-script library (the trustworthy execute_code): register an owner shell body once, call it with args.
+    const sub = rest[0];
+    if (sub === 'add' && rest[1] && rest[2]) {
+      const r = await req('POST', '/scripts', { name: rest[1], script: rest.slice(2).join(' ') });
+      if (!r || r.error) { console.error('✗ ' + ((r && r.error) || 'failed')); process.exit(1); }
+      console.log(gold('✓ script ' + r.name) + dim('  run:  urfael script run ' + r.name + ' [args…]')); return;
+    }
+    if ((sub === 'rm' || sub === 'remove') && rest[1]) { const r = await req('POST', '/script/' + rest[1] + '/delete'); console.log(r && r.ok ? gold('✓ removed ' + rest[1]) : '✗ no such script'); return; }
+    if (sub === 'run' && rest[1]) {
+      const r = await req('POST', '/script/' + rest[1] + '/run', { args: rest.slice(2) });
+      if (r && r.error) { console.error('✗ ' + r.error); process.exit(1); }
+      if (r.out) process.stdout.write(r.out.endsWith('\n') ? r.out : r.out + '\n');
+      console.log(dim('— exit ' + r.exitCode)); return;
+    }
+    const ss = await req('GET', '/scripts');
+    if (!ss || !ss.length) { console.log(dim('no saved scripts — add one:  ') + gold('urfael script add <name> "<shell>"') + dim('   (needs URFAEL_SCRIPT_CRON=1)')); return; }
+    for (const s of ss) console.log(gold(s.name) + dim('  ' + (s.createdAt || '').slice(0, 10)));
     return;
   }
   if (cmd === 'team') {

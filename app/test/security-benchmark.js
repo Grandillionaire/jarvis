@@ -185,6 +185,9 @@ async function main() {
   // no-LLM SCRIPT cron jobs run an owner-authored shell on a schedule — a real power, so OFF by default and
   // refused at the /cron boundary unless the owner opted in (a poisoned LOCAL turn can't schedule a shell).
   check('no-LLM script cron jobs are OFF by default (opt-in shell scheduling, gated at /cron)', /SCRIPT_CRON_ON = process\.env\.URFAEL_SCRIPT_CRON === '1'/.test(daemonSrc) && /specHasScript\(spec\) && !SCRIPT_CRON_ON/.test(daemonSrc) && process.env.URFAEL_SCRIPT_CRON !== '1', 'shell scheduling requires URFAEL_SCRIPT_CRON=1; chained script steps gated too');
+  // the saved-script LIBRARY (execute_code form): the BODY is owner-registered; caller args arrive as positional
+  // $1..$N (argv), NEVER concatenated into the command — so an injected turn can only parameterize a saved script.
+  check('the script library passes caller args as positional argv ($1..$N), never concatenated, and is opt-in', /argv\.push\(String\(a\)/.test(daemonSrc) && /'-c', script, 'urfael-script'/.test(daemonSrc) && /script library is OFF/.test(daemonSrc), 'no shell-injection surface; needs URFAEL_SCRIPT_CRON=1');
 
   // ── 8. INBOUND WEBHOOK TRIGGER ────────────────────────────────────────────
   attackClass('Inbound event trigger — an external webhook must not become an escalation',

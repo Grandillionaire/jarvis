@@ -92,7 +92,7 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 | Background jobs | ✓ | ✓ | ✓ detached, cancellable, phone-push |
 | Goal loop | — | /goal Ralph-loop | ✦ guard-railed goal-loop (caps, kill-switches, never pushes) |
 | Exec backends | local + sandboxes | 6 (Docker/SSH/Modal/…) | local + Docker-isolated goal-loop (--sandbox docker[-net], --network none, staged auth only, caps) |
-| Code-exec RPC | — | execute_code w/ tool RPC | ✓ inherited (Bash + scripts) |
+| Code-exec RPC | — | execute_code w/ tool RPC | ✦ inherited Bash + a **saved-script library** (`urfael script add/run`, opt-in `URFAEL_SCRIPT_CRON`): register an owner shell body once, call `/script/<name>/run` with args from any turn — the *trustworthy* execute_code. The body is owner-registered; caller args arrive as positional `$1..$N` (argv, **never** concatenated → injection-safe, proven in the benchmark), so an injected turn can only parameterize a pre-approved script, never run arbitrary code |
 
 ## Model layer
 | | OpenClaw | Hermes | Urfael |

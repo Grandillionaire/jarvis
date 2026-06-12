@@ -435,6 +435,17 @@ test('cron: a garbage `then` is dropped, the parent still schedules', () => {
   assert.ok(c && !c.then, 'unusable then is omitted, parent survives');
 });
 
+// ---- SAVED-SCRIPT LIBRARY -----------------------------------------------------------------------------
+test('script: normalizeScript accepts a clean slug+body, rejects bad names / over-long bodies', () => {
+  const { normalizeScript } = require('../lib');
+  assert.deepEqual(normalizeScript({ name: 'fib', script: 'echo $1' }), { name: 'fib', script: 'echo $1' });
+  assert.deepEqual(normalizeScript({ name: 'add-2', script: 'expr $1 + $2' }).name, 'add-2');
+  for (const bad of [{ name: '../x', script: 'x' }, { name: 'a b', script: 'x' }, { name: '', script: 'x' },
+    { name: '-lead', script: 'x' }, { name: 'a'.repeat(42), script: 'x' }, { name: 'ok', script: '' },
+    { name: 'ok', script: 'x'.repeat(4001) }, { name: 7, script: 'x' }, null, 'x', []])
+    assert.equal(normalizeScript(bad), null, JSON.stringify(bad));
+});
+
 // ---- WEBHOOK EVENT TRIGGERS ----------------------------------------------------------------------------
 test('hook: normalize defaults action=ask deliver=notify, clamps name, strips control chars', () => {
   assert.deepEqual(normalizeHook({ name: 'deploy done' }), { name: 'deploy done', action: 'ask', deliver: 'notify' });

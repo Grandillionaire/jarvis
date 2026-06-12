@@ -684,22 +684,33 @@ function deliverCron(job, opts) {
   proc.unref();
 }
 
-// No-LLM scheduled step: run the owner-authored shell command (cronRunning already held). scopedEnv (never the
-// daemon's secrets) + the previous step's output as $URFAEL_PREV. Bounded output + a watchdog; delivers + chains
-// via afterCron. Gated by SCRIPT_CRON_ON at the boundary, so this only runs commands the owner explicitly enabled.
+// Shared shell runner for owner-authored scripts (cron steps + the script library). scopedEnv (never the daemon's
+// secrets) + any extraEnv. ARGS (when given) are passed as positional $1..$N via argv — NEVER concatenated into the
+// command string — so a caller can parameterize a saved script without any shell-injection surface. Bounded output
+// + a watchdog. Returns a Promise<{exitCode, out}>; never rejects. opts.detached for the fire-and-forget cron path.
+function runShell(script, extraEnv, opts) {
+  opts = opts || {};
+  const argv = ['-c', script, 'urfael-script'];
+  if (Array.isArray(opts.args)) for (const a of opts.args.slice(0, 32)) argv.push(String(a).slice(0, 2000)); // $1..$N, bounded
+  return new Promise((resolve) => {
+    let out = '', done = false;
+    const finish = (exitCode) => { if (done) return; done = true; resolve({ exitCode, out: out.trim().slice(0, 4000) }); };
+    let proc;
+    try { proc = spawn('/bin/sh', argv, { cwd: VAULT, env: { ...scopedEnv(), ...(extraEnv || {}) }, stdio: ['ignore', 'pipe', 'pipe'], detached: !!opts.detached }); }
+    catch (e) { resolve({ exitCode: -1, out: String((e && e.message) || e) }); return; }
+    const onData = (d) => { out += d.toString(); if (out.length > 1000000) out = out.slice(-1000000); };
+    proc.stdout.on('data', onData); proc.stderr.on('data', onData);
+    const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} finish(-2); }, opts.timeoutMs || 120000);
+    proc.on('exit', (code) => { clearTimeout(timer); finish(code == null ? 0 : code); });
+    proc.on('error', (e) => { clearTimeout(timer); out += String((e && e.message) || e); finish(-1); });
+    if (opts.detached) proc.unref();
+  });
+}
+// No-LLM scheduled step: run the owner-authored shell command (cronRunning already held). Delivers + chains via
+// afterCron. Gated by SCRIPT_CRON_ON at the /cron boundary, so this only runs commands the owner explicitly enabled.
 function runScriptCron(job) {
-  const env = { ...scopedEnv(), URFAEL_PREV: String(job.prevResult || '').slice(0, 8000) };
-  let out = '', done = false;
-  const finish = (txt) => { if (done) return; done = true; afterCron(job, txt, 'script_fire'); };
-  let proc;
-  try { proc = spawn('/bin/sh', ['-c', job.script], { cwd: VAULT, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true }); }
-  catch (e) { logEvent({ ev: 'script_error', id: job.id, err: String((e && e.message) || e) }); cronRunning = false; return; }
-  const onData = (d) => { out += d.toString(); if (out.length > 1000000) out = out.slice(-1000000); };
-  proc.stdout.on('data', onData); proc.stderr.on('data', onData);
-  const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} if (!done) { done = true; cronRunning = false; logEvent({ ev: 'script_timeout', id: job.id }); } }, 120000);
-  proc.on('exit', () => { clearTimeout(timer); finish(out.trim().slice(0, 4000)); });
-  proc.on('error', (e) => { clearTimeout(timer); logEvent({ ev: 'script_error', id: job.id, err: String((e && e.message) || e) }); cronRunning = false; });
-  proc.unref();
+  runShell(job.script, { URFAEL_PREV: String(job.prevResult || '').slice(0, 8000) }, { detached: true })
+    .then((r) => afterCron(job, r.out, 'script_fire'));
 }
 
 // ---- webhook event triggers: registry + dispatch -------------------------------------------------
@@ -729,6 +740,28 @@ function addHook(spec) {
 }
 function removeHook(id) { const list = loadHooks(); const i = list.findIndex((h) => h.id === id); if (i < 0) return false; list.splice(i, 1); saveHooks(list); return true; }
 function getHook(id) { return loadHooks().find((h) => h.id === id) || null; }
+
+// ---- saved-script LIBRARY: the trustworthy execute_code (owner-registered bodies, callable with positional args)
+// Registered bodies live in scripts.json (0600). The brain (or owner) calls /script/<name>/run with ARGS only —
+// the body is never supplied at call time, args arrive as $1..$N (argv), so an injected turn can only parameterize
+// a pre-approved script, never run arbitrary code. ALL of this is gated by the SAME SCRIPT_CRON_ON opt-in.
+const SCRIPTS_FILE = path.join(JDIR, 'scripts.json');
+const SCRIPTS_MAX = 100;
+function loadScripts() { try { const j = JSON.parse(fs.readFileSync(SCRIPTS_FILE, 'utf8')); return Array.isArray(j) ? j : []; } catch { return []; } }
+function saveScripts(list) { try { fs.mkdirSync(JDIR, { recursive: true }); const tmp = SCRIPTS_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(list, null, 2), { mode: 0o600 }); fs.renameSync(tmp, SCRIPTS_FILE); } catch {} }
+const { normalizeScript } = require('./lib');
+function addScript(spec) {
+  const n = normalizeScript(spec);
+  if (!n) return null;
+  const list = loadScripts();
+  const i = list.findIndex((s) => s.name === n.name);
+  const rec = { name: n.name, script: n.script, createdAt: new Date().toISOString() };
+  if (i >= 0) list[i] = rec; else { if (list.length >= SCRIPTS_MAX) return null; list.push(rec); }
+  saveScripts(list);
+  return { name: n.name };
+}
+function removeScript(name) { const list = loadScripts(); const i = list.findIndex((s) => s.name === name); if (i < 0) return false; list.splice(i, 1); saveScripts(list); return true; }
+function getScript(name) { return loadScripts().find((s) => s.name === name) || null; }
 // Run a validated hook. 'notify' pushes the raw payload to the owner (no LLM). 'ask' runs the brain on the
 // payload in a no-egress, untrusted-framed sandbox (deliverCron's machinery, tightened) and delivers the result.
 function fireHook(hook, payload) {
@@ -1225,6 +1258,27 @@ const server = http.createServer(async (req, res) => {
     const text = typeof spec.text === 'string' ? spec.text.slice(0, 1000) : '';
     if (text.trim()) { notifyOwner(text, { speak: spec.speak !== false }); logEvent({ ev: 'notify_push', len: text.length }); }
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: !!text.trim() }));
+  } else if (req.method === 'POST' && req.url === '/scripts') {
+    // register a reusable owner script. Gated by the SAME script opt-in (a poisoned turn can't register a shell).
+    if (!SCRIPT_CRON_ON) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'script library is OFF — set URFAEL_SCRIPT_CRON=1' })); return; }
+    const body = await readBody(req); let spec = {}; try { spec = JSON.parse(body); } catch {}
+    const r = addScript(spec);
+    if (!r) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'need {name:/^[a-z0-9][a-z0-9_-]{0,40}$/, script:<=4000 chars}' })); return; }
+    logEvent({ ev: 'script_register', name: r.name }); res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(r));
+  } else if (req.url === '/scripts') {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(loadScripts().map((s) => ({ name: s.name, createdAt: s.createdAt }))));
+  } else if (req.method === 'POST' && req.url.startsWith('/script/')) {
+    const m = req.url.match(/^\/script\/([a-z0-9][a-z0-9_-]{0,40})\/(run|delete)$/);
+    if (!m) { res.writeHead(404); res.end(); return; }
+    if (!SCRIPT_CRON_ON) { res.writeHead(403, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'script library is OFF — set URFAEL_SCRIPT_CRON=1' })); return; }
+    if (m[2] === 'delete') { const ok = removeScript(m[1]); logEvent({ ev: 'script_delete', name: m[1], ok }); res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok })); return; }
+    // run a SAVED body with caller-supplied positional args ($1..$N). The body is owner-registered; args are argv.
+    const sc = getScript(m[1]);
+    if (!sc) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'no such script' })); return; }
+    const body = await readBody(req); let spec = {}; try { spec = JSON.parse(body); } catch {}
+    const r = await runShell(sc.script, { URFAEL_PREV: '' }, { args: Array.isArray(spec.args) ? spec.args : [], timeoutMs: 60000 });
+    logEvent({ ev: 'script_run', name: m[1], exit: r.exitCode, out: r.out.length });
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ name: m[1], exitCode: r.exitCode, out: r.out }));
   } else if (req.method === 'POST' && req.url === '/hooks') {
     // register a webhook event trigger: {name, action?:'ask'|'notify', deliver?:'notify'|'silent'|'push'}.
     // Returns the secret ONCE (only its hash is stored). The brain or the owner creates these via `urfael hook add`.

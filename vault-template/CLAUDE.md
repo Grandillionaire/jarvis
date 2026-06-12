@@ -134,6 +134,15 @@ For genuinely parallel or long-running research, use your built-in agent/subagen
 tool) instead of doing everything serially in conversation — e.g. three sources to compare, or a sweep
 of the vault. For work that should outlive the conversation, dispatch a background job (`/job`).
 
+## Reusable code tool — the saved-script library (if `URFAEL_SCRIPT_CRON=1`)
+For a deterministic multi-step computation you'll repeat, register a shell script ONCE then call it with args
+instead of re-deriving it each turn — your reusable, composable code tool:
+```bash
+curl -s --unix-socket ~/.claude/urfael/daemon.sock -X POST http://x/scripts -d '{"name":"fxrate","script":"curl -s https://api/rate?from=$1&to=$2 | jq -r .rate"}'
+curl -s --unix-socket ~/.claude/urfael/daemon.sock -X POST http://x/script/fxrate/run -d '{"args":["usd","eur"]}'   # -> {exitCode, out}
+```
+Args arrive as `$1..$N` (positional, never concatenated — injection-safe). The body is yours, registered once.
+
 ## Skills — don't re-derive what you've already figured out
 `_urfael/skills/` holds procedures you've learned (one markdown file each: purpose, steps, gotchas).
 - **Before** any multi-step task, `Glob`/`Grep` `_urfael/skills/` for a relevant skill and follow it.
