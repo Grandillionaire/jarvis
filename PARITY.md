@@ -7,13 +7,34 @@
 > Urfael's structural advantage: the brain is the `claude` CLI, so Claude Code's whole tool surface
 > (files, shell, web, MCP, subagents, skills) is inherited, not reimplemented.
 
+## Honesty calibration — adversarial code-audit (June 2026)
+
+A 21-agent audit re-verified every row against the actual source, with a skeptic pass that downgraded any
+claim the code didn't earn. Verdict: **Urfael matches or beats Hermes on essentially every capability**, with
+these honest caveats — read the `✦`/`✓` marks below through this lens:
+
+- **Was genuinely missing, now fixed:** native email-push event triggers (see Event triggers row) and the
+  curator's usage-weighting (now reinforced on recurrence). No real Hermes capability is missing today.
+- **Opt-in / off by default** (present + tested, dormant until enabled): semantic-vector recall
+  (`URFAEL_EMBED_URL`), per-turn user-model dialectic (`URFAEL_USERMODEL`, and on remote turns only for the
+  *owner*), the skill curator (`URFAEL_CURATOR_DAYS`), no-agent script cron (`URFAEL_SCRIPT_CRON`), the webhook
+  receiver (`urfael hooks`). These are "secure-by-default off", not absent.
+- **Deliberate non-goals** (a choice, not a loss): Claude-only vs 300+ providers / model routing / usage quotas;
+  no paid serverless exec backends.
+- **Verification-gated:** the Electron GUI ships unsigned; Windows is code-complete but unverified; several
+  event/cron/webhook paths are covered by source-level + targeted live checks rather than full behavioural suites.
+- **Honest "parity, not better":** the web dashboard, OpenAI-compatible server, pairing/allowlist, and curated
+  memory are *security-hardened* and solid, but "better than Hermes" there was an unverifiable comparative —
+  treat them as parity. Where Urfael is genuinely ahead, see the Security row + the universal relay + the
+  isolated never-push goal-loop + the migration importers + the heartbeat.
+
 ## Surfaces
 | Capability | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Desktop app (chat, streaming tool rows, sessions, settings) | menu-bar app | Electron+React | ✓ **Console** (chat, archive, reminders, jobs, hearth, settings) |
 | CLI | `openclaw …` | TUI-first, rich | ✦ `urfael` CLI **and** `urfael tui` full-screen ANSI cockpit (streamed transcript + tool rows, Esc-abort, terminal-safe) |
 | Voice (wake word, PTT, barge-in, local STT/TTS) | wake word, talk mode | CLI PTT, voice memos | ✦ orb (opt-in) + Console PTT + spoken remarks, all local |
-| Web dashboard | ✓ | ✓ | ✦ token-gated localhost dashboard (now surfaces the learning ledger + the team audit trail, no terminal) (127.0.0.1-only, constant-time token, no path serving — hardened past both) |
+| Web dashboard | ✓ | ✓ | ✓ token-gated localhost dashboard (surfaces vitals, usage, reminders, jobs, the learning ledger + team audit trail; ask is request/response). Functionally parity; **security-hardened** — 127.0.0.1-only, constant-time token, no path serving (off-box access needs your own tunnel) |
 | Mobile nodes / canvas | iOS/Android, A2UI canvas | ✗ | ✗ — non-goal for now (phone via bridges) |
 | REST API | WS gateway | OpenAI-compatible REST | ✓ OpenAI-compatible `/v1/chat/completions`+`/v1/models` (127.0.0.1-only, token-gated) — drives Open WebUI/LibreChat/any OpenAI client |
 
@@ -54,14 +75,14 @@
 |---|---|---|---|
 | Skill files | ClawHub registry | reflective phase + curator + hub | ✓ reflective distill + opt-in per-turn review (URFAEL_REVIEW) → `_urfael/skills/`; prove-wrong → fix/delete |
 | Skill registry | ✦ (and poisoned — 20% malware) | hub + trust tiers | deliberately none (security); Claude Code skills work natively |
-| Periodic curator | — | ✓ (7-day cycle, usage telemetry) | ✓ opt-in N-day curator (URFAEL_CURATOR_DAYS): consolidate/fix/delete stale skills, cadence survives restarts |
+| Periodic curator | — | ✓ (7-day cycle, usage telemetry) | ✓ opt-in N-day curator (URFAEL_CURATOR_DAYS, **off by default**): consolidate/fix/delete stale skills, cadence survives restarts. Ledger pruning is now genuinely **usage-weighted** — a lesson the distiller re-derives is reinforced (confidence climbs), bad lessons retire via the verify gate + confidence floor |
 
 ## Proactivity & scheduling
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Heartbeat (main-session checklist, silence contract) | ✦ invented it | ✗ | ✓ HEARTBEAT.md + HEARTBEAT_OK + active hours + busy-backoff |
 | Cron / NL scheduling | ✓ | ✓ rich (chaining, no-agent scripts) | ✦ reminders + **scheduled jobs** (`/cron`): run the brain (read/fetch-only sandbox) OR a **no-agent shell script** (`--script`, opt-in `URFAEL_SCRIPT_CRON`, no-LLM, owner-authored), **chain** a `--then` follow-up on completion (output threaded as `$URFAEL_PREV` / untrusted context, depth-bounded), deliver via notify/say/push/[silent] |
-| Event triggers (webhooks, email push) | ✓ | ✓ | ✦ **webhook event triggers** — a LOOPBACK-only receiver (the daemon never opens a port), each hook gated by its own 256-bit secret (sha256-hashed, constant-time), payload framed UNTRUSTED; the `ask` action runs the brain NO-EGRESS (Read/Grep/Glob), result to the owner only. Tunnel it yourself for external events. See docs/HOOKS.md |
+| Event triggers (webhooks, email push) | ✓ | ✓ | ✓ **webhook triggers** — a LOOPBACK-only receiver (the daemon never opens a port; OFF until `urfael hooks`, tunnel it yourself for public events), per-hook 256-bit secret (sha256-hashed, constant-time), payload framed UNTRUSTED, no-egress `ask`. **AND native email-push triggers** — `EMAIL_TRIGGERS=[{from?,subject?,action:notify\|ask}]`: a matching inbound email fires a one-way push to the owner (the "when email matching X arrives, do Y" primitive). See docs/HOOKS.md |
 
 ## Agents & execution
 | | OpenClaw | Hermes | Urfael |

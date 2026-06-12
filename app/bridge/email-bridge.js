@@ -5,7 +5,9 @@
 // daemon forces into the sandboxed 'untrusted' profile. The reply is saved as an IMAP DRAFT (APPEND \Draft) —
 // we open NO inbound port and we NEVER auto-send a single message. All mail content is treated as untrusted.
 //   node email-bridge.js            run the bridge
-//   node email-bridge.js --notify "text"   accepted but no-op (email has no one-way push; draft-only by design)
+//   node email-bridge.js --notify "text"   no-op for OUTBOUND (email is draft-only out; inbound PUSH uses EMAIL_TRIGGERS)
+// EMAIL-PUSH TRIGGERS: EMAIL_TRIGGERS=[{from?,subject?,action:'notify'|'ask'}] — a matching inbound email fires a
+// one-way push to the owner (the native "when email matching X arrives, do Y" primitive). The draft is unchanged.
 const tls = require('tls');
 const core = require('./bridge-core');
 
@@ -18,6 +20,11 @@ const DRAFTS = cfg.EMAIL_DRAFT_MAILBOX || 'Drafts';
 const POLL_SECS = Math.max(10, parseInt(cfg.EMAIL_POLL_SECS || '60', 10) || 60); // IDLE fallback floor
 // Allowlist of From addresses — ONLY mail from one of these is ever relayed. Parsed once, lowercased.
 const ALLOWED = new Set(String(cfg.EMAIL_ALLOWED_SENDERS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+// Inbound EMAIL-PUSH event triggers: rules that fire an ACTION when an allowlisted email matches — distinct from
+// the draft reply. EMAIL_TRIGGERS is a JSON array, e.g. [{"from":"boss@","action":"notify"},{"subject":"invoice","action":"ask"}].
+// 'notify' pushes the owner an alert (subject + sender); 'ask' also pushes the brain's short take. Fail-soft to none.
+let TRIGGERS = [];
+try { const t = JSON.parse(cfg.EMAIL_TRIGGERS || '[]'); if (Array.isArray(t)) TRIGGERS = t; } catch {}
 const bucket = new core.TokenBucket(8, 20);            // 8 burst, ~20/min sustained — bounds a flood/injection loop
 const processed = new Set();                            // uids fetched this session — so dropped/hostile mail is parsed once, not every poll
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,6 +34,23 @@ function addrOf(from) {
   const s = String(from || '');
   const m = s.match(/<([^>]+)>/);
   return (m ? m[1] : s).trim().toLowerCase();
+}
+
+// Match a mail against the trigger rules. Returns the first matching {action} or null. A rule must specify at
+// least one of from/subject (so an empty rule never matches everything); every specified criterion (substring,
+// case-insensitive) must match. Pure + fail-closed — unit-tested without a live server.
+function matchTrigger(mail, rules) {
+  if (!Array.isArray(rules)) return null;
+  const from = addrOf(mail && mail.from);
+  const subject = String((mail && mail.subject) || '').toLowerCase();
+  for (const r of rules) {
+    if (!r || typeof r !== 'object') continue;
+    const f = typeof r.from === 'string' ? r.from.toLowerCase().trim() : '';
+    const s = typeof r.subject === 'string' ? r.subject.toLowerCase().trim() : '';
+    if (!f && !s) continue;                                  // a rule with no criteria never matches (no fire-on-everything)
+    if ((!f || from.includes(f)) && (!s || subject.includes(s))) return { action: r.action === 'ask' ? 'ask' : 'notify' };
+  }
+  return null;
 }
 
 // Minimal line-buffered IMAP client over one TLS socket. Tags every command, matches the tagged completion
@@ -341,6 +365,14 @@ async function drain(imap) {
       const reply = core.stripSpoken(await core.askDaemon('Subject: ' + mail.subject + '\n\n' + mail.body, 'email', principal));
       await saveDraft(imap, sender, mail.subject, reply, mail.inReplyTo);
       await markSeen(imap, uid); seen(uid); // only after a draft is safely stored
+      // EVENT TRIGGER: if this mail matches a rule, fire a one-way PUSH to the owner (the email-push primitive) —
+      // 'notify' pushes sender+subject; 'ask' also pushes the brain's short take. The draft (above) is unchanged.
+      const trig = matchTrigger(mail, TRIGGERS);
+      if (trig) {
+        const alert = '[email · ' + sender + '] ' + mail.subject + (trig.action === 'ask' ? ' — ' + reply.replace(/\s+/g, ' ').slice(0, 200) : '');
+        await core.notifyDaemon(alert);
+        core.audit({ ev: 'email_trigger', from: sender, action: trig.action });
+      }
       core.audit({ ev: 'email_turn', from: sender, principal: principal.name, role: principal.role, inLen: mail.body.length, outLen: reply.length, ms: Date.now() - t0 });
     } catch (e) { core.audit({ ev: 'email_turn_error', from: sender, err: String((e && e.message) || e) }); } // a failed turn stays UNSEEN+unprocessed → retried
   }
@@ -392,5 +424,5 @@ async function main() {
   }
 }
 
-module.exports = { Imap, parseFetch, addrOf, parseSearch, decodeBody }; // pure pieces, for tests
+module.exports = { Imap, parseFetch, addrOf, parseSearch, decodeBody, matchTrigger }; // pure pieces, for tests
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });

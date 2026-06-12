@@ -68,6 +68,17 @@ function askDaemon(text, channel, principal) {
   });
 }
 
+// One-way push to the OWNER via the daemon (notification + spoken + the owner's push channels). Used by event
+// triggers (e.g. an inbound email matching a rule) to fire an alert. Fail-soft: resolves false if the daemon is down.
+function notifyDaemon(text) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify({ text: String(text || '').slice(0, 1000) });
+    const req = http.request({ socketPath: SOCK, method: 'POST', path: '/notify', headers: { 'Content-Type': 'application/json' }, timeout: 15000 }, (res) => { res.resume(); res.on('end', () => resolve(true)); });
+    req.on('error', () => resolve(false)); req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(payload);
+  });
+}
+
 function stripSpoken(t) { return (t || '').replace(/\[\/?SPOKEN\]/gi, '').trim(); }
 
 // Token bucket: `capacity` burst, refilling `refillPerMin` per minute. take() => boolean.
@@ -181,4 +192,4 @@ async function notifyAll(text) {
   if (process.platform === 'darwin' && cfg.IMESSAGE_OWNER_HANDLE) { try { await imessageSend(cfg.IMESSAGE_OWNER_HANDLE, text); } catch {} }
 }
 
-module.exports = { JDIR, SOCK, ENVF, TEAMF, AUDIT, loadEnv, loadRoster, resolvePrincipal, audit, askDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };
+module.exports = { JDIR, SOCK, ENVF, TEAMF, AUDIT, loadEnv, loadRoster, resolvePrincipal, audit, askDaemon, notifyDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };

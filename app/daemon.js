@@ -273,6 +273,10 @@ const brain = {
         try { const j = JSON.parse(out); txt = typeof j.result === 'string' ? j.result : ''; } catch {}
         logEvent({ ev: 'remote_turn', channel: ctx.channel || '', principal: ctx.principal || '', role: ctx.role || '', profile: String(profile.name), model, permissionMode: permMode, allowedTools: profile.allowedTools.join(','), in: text.length, out: txt.length });
         recordSession({ t: new Date().toISOString(), channel: ctx.channel || String(profile.name), principal: ctx.principal || '', role: ctx.role || '', profile: String(profile.name), model, user: text, urfael: txt });
+        // per-turn user-model dialectic is channel-agnostic — but ONLY for the OWNER's own remote turns (their phone),
+        // never a member/guest, so an untrusted teammate can't reshape the owner's USER.md. (Honcho is always-on; this
+        // is the safe equivalent.) Local mic turns already call modelUser at brain.ask.
+        if (txt && ctx.role === 'owner') modelUser(text, txt);
         resolve({ text: txt || '(no reply)', model });
       });
       proc.on('error', () => { clearTimeout(timer); inflightScoped.delete(proc); resolve({ text: '(brain spawn failed)', model }); });
@@ -867,8 +871,12 @@ async function verifyLearnings() {
       if (!s || typeof s.ref !== 'string' || !s.ref.trim()) continue;
       const r = learn.upsert(items, { type: s.type === 'skill' || s.type === 'user' ? s.type : 'lesson', ref: s.ref.trim(), source: 'distill', now: Date.now() });
       items = r.items;
-      if (!r.item || !r.isNew) continue;                                 // already known → don't re-verify
-      const verdict = await verifyOne(r.item);                           // INDEPENDENT judgement
+      if (!r.item) continue;
+      // RECURRENCE = real positive-usage evidence: a lesson the distiller re-derived is one that keeps mattering,
+      // so reinforce it (helped++/lastUsed, confidence climbs) instead of just skipping. This is what makes the
+      // ledger's confidence — and the curator's pruning — genuinely usage-weighted, not age-only. (audit fix)
+      if (!r.isNew) { items = learn.reinforce(items, r.item.id, Date.now()); continue; } // already trusted → don't re-verify
+      const verdict = await verifyOne(r.item);                           // INDEPENDENT judgement (new lessons only)
       items = learn.applyVerdict(items, r.item.id, verdict, Date.now());
       const it = items.find((x) => x.id === r.item.id);
       if (it && it.status === 'trusted') trusted.push(it); else rejected.push({ ref: r.item.ref, note: (verdict && verdict.note) || 'unverified' });
@@ -1185,6 +1193,14 @@ const server = http.createServer(async (req, res) => {
     logEvent({ ev: 'cron_run_now', id: m[1] });
     deliverCron(job); // single-flight inside deliverCron; returns immediately (detached)
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true }));
+  } else if (req.method === 'POST' && req.url === '/notify') {
+    // owner-socket-only one-way push to the owner — used by EVENT TRIGGERS (e.g. an inbound email matching a rule).
+    // The text may summarize UNTRUSTED content; notifyOwner sanitizes it (strips \ " and a leading '-'). Never the brain.
+    const body = await readBody(req);
+    let spec = {}; try { spec = JSON.parse(body); } catch {}
+    const text = typeof spec.text === 'string' ? spec.text.slice(0, 1000) : '';
+    if (text.trim()) { notifyOwner(text, { speak: spec.speak !== false }); logEvent({ ev: 'notify_push', len: text.length }); }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: !!text.trim() }));
   } else if (req.method === 'POST' && req.url === '/hooks') {
     // register a webhook event trigger: {name, action?:'ask'|'notify', deliver?:'notify'|'silent'|'push'}.
     // Returns the secret ONCE (only its hash is stored). The brain or the owner creates these via `urfael hook add`.
