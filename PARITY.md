@@ -17,8 +17,9 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
   curator's usage-weighting (now reinforced on recurrence). No real Hermes capability is missing today.
 - **Opt-in / off by default** (present + tested, dormant until enabled): semantic-vector recall
   (`URFAEL_EMBED_URL`), per-turn user-model dialectic (`URFAEL_USERMODEL`, and on remote turns only for the
-  *owner*), the skill curator (`URFAEL_CURATOR_DAYS`), no-agent script cron (`URFAEL_SCRIPT_CRON`), the webhook
-  receiver (`urfael hooks`). These are "secure-by-default off", not absent.
+  *owner*), no-agent script cron (`URFAEL_SCRIPT_CRON`), predictive heartbeat (`URFAEL_PREDICT`), the webhook
+  receiver (`urfael hooks`). These are "secure-by-default off", not absent. (The skill curator is now **on by
+  default** at 7 days — `URFAEL_CURATOR_DAYS=0` disables it.)
 - **Deliberate non-goals** (a choice, not a loss): Claude-only vs 300+ providers / model routing / usage quotas;
   no paid serverless exec backends.
 - **Verification-gated:** the Electron GUI ships unsigned; Windows is code-complete but unverified; several
@@ -65,7 +66,7 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Migration importer | — | ✓ `claw migrate` (imports OpenClaw) | ✦ `urfael import` imports from **both** OpenClaw and Hermes (memory + skills; foreign skills safety-scanned, DANGER skipped) |
-| OpenAI-client interop | ✗ | ✓ (OpenAI-compatible server) | ✓ token-gated localhost OpenAI API |
+| OpenAI-client interop | ✗ | ✓ (OpenAI-compatible server) | ✓ token-gated localhost OpenAI API, now with **real token usage** in responses (`prompt`/`completion`/`total_tokens`, cached reads counted as input) + an opt-in `stream_options.include_usage` final chunk — so LibreChat/cost-meter clients read true spend, not zeros |
 
 ## Skills & self-improvement
 | | OpenClaw | Hermes | Urfael |
@@ -75,12 +76,12 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 |---|---|---|---|
 | Skill files | ClawHub registry | reflective phase + curator + hub | ✓ reflective distill + opt-in per-turn review (URFAEL_REVIEW) → `_urfael/skills/`; prove-wrong → fix/delete |
 | Skill registry | ✦ (and poisoned — 20% malware) | hub + trust tiers | deliberately none (security); Claude Code skills work natively |
-| Periodic curator | — | ✓ (7-day cycle, usage telemetry) | ✓ opt-in N-day curator (URFAEL_CURATOR_DAYS, **off by default**): consolidate/fix/delete stale skills, cadence survives restarts. Ledger pruning is now genuinely **usage-weighted** — a lesson the distiller re-derives is reinforced (confidence climbs), bad lessons retire via the verify gate + confidence floor |
+| Periodic curator | — | ✓ (7-day cycle, usage telemetry) | ✦ N-day curator **ON by default (7-day)**, `URFAEL_CURATOR_DAYS=0` to disable: consolidate/fix/delete stale skills, cadence survives restarts — and **safer** than Hermes's (it never *executes* a skill). Ledger pruning is genuinely **usage-weighted** — a lesson the distiller re-derives is reinforced (confidence climbs), bad lessons retire via the verify gate + confidence floor |
 
 ## Proactivity & scheduling
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
-| Heartbeat (main-session checklist, silence contract) | ✦ invented it | ✗ | ✓ HEARTBEAT.md + HEARTBEAT_OK + active hours + busy-backoff |
+| Heartbeat (main-session checklist, silence contract) | ✦ invented it | ✗ | ✦ HEARTBEAT.md + HEARTBEAT_OK + active hours + busy-backoff, **plus opt-in predictive mode** (`URFAEL_PREDICT=1`): the heartbeat reads USER.md's "likely next" and PREPARES a ready-to-act offer for any prediction already ripe — surface-only, never acts |
 | Cron / NL scheduling | ✓ | ✓ rich (chaining, no-agent scripts) | ✦ reminders + **scheduled jobs** (`/cron`): run the brain (read/fetch-only sandbox) OR a **no-agent shell script** (`--script`, opt-in `URFAEL_SCRIPT_CRON`, no-LLM, owner-authored), **chain** a `--then` follow-up on completion (output threaded as `$URFAEL_PREV` / untrusted context, depth-bounded), deliver via notify/say/push/[silent] |
 | Event triggers (webhooks, email push) | ✓ | ✓ | ✓ **webhook triggers** — a LOOPBACK-only receiver (the daemon never opens a port; OFF until `urfael hooks`, tunnel it yourself for public events), per-hook 256-bit secret (sha256-hashed, constant-time), payload framed UNTRUSTED, no-egress `ask`. **AND native email-push triggers** — `EMAIL_TRIGGERS=[{from?,subject?,action:notify\|ask}]`: a matching inbound email fires a one-way push to the owner (the "when email matching X arrives, do Y" primitive). See docs/HOOKS.md |
 

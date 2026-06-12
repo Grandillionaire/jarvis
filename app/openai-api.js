@@ -117,17 +117,23 @@ function stripSpoken(s) { return String(s == null ? '' : s).replace(/\[SPOKEN\][
 
 // ---- daemon proxy over the unix socket. We never expose a daemon path verbatim to the client. ----------
 // Non-streaming: collapse the NDJSON to the final {kind:'done'} reply.
+// Map the daemon's token usage to the OpenAI shape. Cached reads ARE input tokens in OpenAI's accounting.
+function toUsage(u) {
+  const inp = (u && u.input_tokens || 0) + (u && u.cache_read_input_tokens || 0);
+  const out = (u && u.output_tokens) || 0;
+  return { prompt_tokens: inp, completion_tokens: out, total_tokens: inp + out };
+}
 function daemonAskFinal(text) {
   return new Promise((resolve) => {
     const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' }, timeout: 300000 }, (res) => {
-      let buf = '', final = '', model = '';
+      let buf = '', final = '', model = '', usage = null;
       res.on('data', (d) => { buf += d.toString(); let i;
         while ((i = buf.indexOf('\n')) >= 0) { const ln = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          if (!ln) continue; try { const e = JSON.parse(ln); if (e.kind === 'done') { final = e.text || ''; model = e.model || ''; } } catch {} } });
-      res.on('end', () => resolve({ text: final || '(no reply)', model }));
+          if (!ln) continue; try { const e = JSON.parse(ln); if (e.kind === 'done') { final = e.text || ''; model = e.model || ''; usage = e.usage || null; } } catch {} } });
+      res.on('end', () => resolve({ text: final || '(no reply)', model, usage }));
     });
-    r.on('error', () => resolve({ text: '(brain unreachable — is the Urfael daemon running?)', model: '' }));
-    r.on('timeout', () => { r.destroy(); resolve({ text: '(timed out)', model: '' }); });
+    r.on('error', () => resolve({ text: '(brain unreachable — is the Urfael daemon running?)', model: '', usage: null }));
+    r.on('timeout', () => { r.destroy(); resolve({ text: '(timed out)', model: '', usage: null }); });
     r.end(JSON.stringify({ text }));
   });
 }
@@ -150,7 +156,7 @@ function safeRawPrefix(acc) {
 // Streaming: open the daemon's NDJSON stream and invoke callbacks. onDelta(text) for each written-answer
 // fragment (with [SPOKEN] asides removed incrementally), onDone({model}) when the turn ends.
 function daemonAskStream(text, onDelta, onDone) {
-  let acc = '', emitted = 0, model = '';
+  let acc = '', emitted = 0, model = '', usage = null;
   const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' }, timeout: 300000 }, (res) => {
     let buf = '';
     res.on('data', (d) => { buf += d.toString(); let i;
@@ -162,15 +168,16 @@ function daemonAskStream(text, onDelta, onDone) {
           if (safe.length > emitted) { const chunk = safe.slice(emitted); emitted = safe.length; if (chunk) onDelta(chunk); }
         } else if (e.kind === 'done') {
           model = e.model || model;
+          usage = e.usage || usage;
           // the daemon's done.text is the authoritative full written answer; flush whatever was held back.
           const full = stripSpoken(typeof e.text === 'string' && e.text ? e.text : acc);
           if (full.length > emitted) { const chunk = full.slice(emitted); emitted = full.length; if (chunk) onDelta(chunk); }
         }
       } });
-    res.on('end', () => onDone({ model }));
+    res.on('end', () => onDone({ model, usage }));
   });
-  r.on('error', () => { onDelta('(brain unreachable — is the Urfael daemon running?)'); onDone({ model: '' }); });
-  r.on('timeout', () => { r.destroy(); onDelta('(timed out)'); onDone({ model: '' }); });
+  r.on('error', () => { onDelta('(brain unreachable — is the Urfael daemon running?)'); onDone({ model: '', usage: null }); });
+  r.on('timeout', () => { r.destroy(); onDelta('(timed out)'); onDone({ model: '', usage: null }); });
   r.end(JSON.stringify({ text }));
 }
 
@@ -229,11 +236,13 @@ const server = http.createServer(async (req, res) => {
       write({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] });
       let clientGone = false;
       res.on('close', () => { clientGone = true; });
+      const wantUsage = !!(parsed.stream_options && parsed.stream_options.include_usage); // OpenAI: emit a usage chunk only if asked
       daemonAskStream(prompt,
         (chunk) => { if (!clientGone) write({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] }); },
-        () => {
+        (done) => {
           if (!clientGone) {
             write({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+            if (wantUsage) write({ id, object: 'chat.completion.chunk', created, model, choices: [], usage: toUsage(done && done.usage) }); // final usage chunk (choices:[]) per the OpenAI spec
             try { res.write('data: [DONE]\n\n'); } catch {}
           }
           try { res.end(); } catch {}
@@ -241,13 +250,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // non-streaming: one JSON completion object
-    const { text } = await daemonAskFinal(prompt);
+    // non-streaming: one JSON completion object — with the REAL token usage the daemon computed
+    const { text, usage } = await daemonAskFinal(prompt);
     const content = stripSpoken(text);
     return sendJson(res, 200, {
       id, object: 'chat.completion', created, model,
       choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, // best-effort; the daemon owns real token accounting
+      usage: toUsage(usage),
     });
   }
 
@@ -272,4 +281,4 @@ if (require.main === module) {
   process.on('SIGINT', () => process.exit(0));
 }
 // Pure helpers exported for unit tests (the SSE [SPOKEN]-strip path is the trickiest code in this file).
-module.exports = { buildPrompt, stripSpoken, safeRawPrefix, flattenContent };
+module.exports = { buildPrompt, stripSpoken, safeRawPrefix, flattenContent, toUsage };
