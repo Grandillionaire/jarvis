@@ -89,21 +89,28 @@ function daemonGet(p) {
     r.on('error', reject); r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); }); r.end();
   });
 }
-// POST /ask over the socket with channel:'local' absent? NO — the dashboard is a remote-ish surface but the owner
-// is already proven by the page token, so it runs as the local mic would. We collapse the NDJSON to the final reply.
-function daemonAsk(text) {
-  return new Promise((resolve) => {
-    const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' }, timeout: 200000 }, (res) => {
-      let buf = '', final = '';
-      res.on('data', (d) => { buf += d.toString(); let i;
-        while ((i = buf.indexOf('\n')) >= 0) { const ln = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          if (!ln) continue; try { const e = JSON.parse(ln); if (e.kind === 'done') final = e.text || ''; } catch {} } });
-      res.on('end', () => resolve(final || '(no reply)'));
-    });
-    r.on('error', () => resolve('(brain unreachable — is the Urfael daemon running?)'));
-    r.on('timeout', () => { r.destroy(); resolve('(timed out)'); });
-    r.end(JSON.stringify({ text }));
+// STREAM the daemon's /ask NDJSON to the browser as incremental plain text (the brain already streams; we no
+// longer collapse it to one reply). [SPOKEN] asides are stripped exactly as the OpenAI server does (reused, not
+// reimplemented). The dashboard is the local owner (proven by the page token), so it runs as the mic would.
+const { stripSpoken, safeRawPrefix } = require('./openai-api'); // require-safe (bootstrap is guarded), pure helpers
+function daemonAskStreamTo(text, res) {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  let acc = '', emitted = 0, ended = false;
+  const flush = (full) => { if (full.length > emitted) { try { res.write(full.slice(emitted)); } catch {} emitted = full.length; } };
+  const finish = (fallback) => { if (ended) return; ended = true; if (fallback != null && !emitted) { try { res.write(fallback); } catch {} } try { res.end(); } catch {} };
+  const r = http.request({ socketPath: SOCK, method: 'POST', path: '/ask', headers: { 'Content-Type': 'application/json' }, timeout: 200000 }, (resp) => {
+    let buf = '';
+    resp.on('data', (d) => { buf += d.toString(); let i;
+      while ((i = buf.indexOf('\n')) >= 0) { const ln = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!ln) continue; let e; try { e = JSON.parse(ln); } catch { continue; }
+        if (e.kind === 'thinking' && typeof e.delta === 'string') { acc += e.delta; flush(stripSpoken(safeRawPrefix(acc))); }
+        else if (e.kind === 'done') { flush(stripSpoken(typeof e.text === 'string' && e.text ? e.text : acc)); finish(); }
+      } });
+    resp.on('end', () => finish('(no reply)'));
   });
+  r.on('error', () => finish('(brain unreachable — is the Urfael daemon running?)'));
+  r.on('timeout', () => { r.destroy(); finish('(timed out)'); });
+  r.end(JSON.stringify({ text }));
 }
 
 // sessions search — RANKED recall via the daemon's GET /recall (BM25), not substring grep. The daemon
@@ -233,7 +240,12 @@ function sessions(){var q=$('#sq').value.trim();if(!q){$('#sessions').innerHTML=
   }).catch(function(){})}
 $('#sq').addEventListener('input',function(){clearTimeout(st);st=setTimeout(sessions,300)});
 function send(){var t=$('#q').value.trim();if(!t)return;var b=$('#send');b.disabled=true;$('#reply').textContent='…thinking';
-  api('/api/ask',{method:'POST',body:JSON.stringify({text:t})}).then(function(r){$('#reply').textContent=(r&&r.text)||'(no reply)'}).catch(function(){$('#reply').textContent='(error)'}).then(function(){b.disabled=false})}
+  fetch('/api/ask',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})}).then(function(r){
+    if(!r.ok||!r.body){return r.text().then(function(x){$('#reply').textContent=x||'(error)'})}
+    $('#reply').textContent='';var reader=r.body.getReader();var dec=new TextDecoder();
+    function pump(){return reader.read().then(function(res){if(res.done)return;$('#reply').textContent+=dec.decode(res.value,{stream:true});return pump()})}
+    return pump();
+  }).catch(function(){$('#reply').textContent='(error)'}).then(function(){b.disabled=false})}
 $('#send').addEventListener('click',send);
 $('#q').addEventListener('keydown',function(e){if((e.metaKey||e.ctrlKey)&&e.key==='Enter')send()});
 function learn(){return api('/api/learn').then(function(d){
@@ -307,7 +319,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req); let parsed = {}; try { parsed = JSON.parse(body); } catch {}
       const text = typeof parsed.text === 'string' ? parsed.text.slice(0, 8000) : '';
       if (!text.trim()) return sendJson(res, 400, { error: 'empty' });
-      return sendJson(res, 200, { text: await daemonAsk(text) });
+      return daemonAskStreamTo(text, res); // streams the answer token-by-token to the browser
     }
   } catch { return sendJson(res, 502, { error: 'daemon unreachable' }); }
 

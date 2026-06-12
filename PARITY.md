@@ -35,7 +35,7 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 | Desktop app (chat, streaming tool rows, sessions, settings) | menu-bar app | Electron+React | ✓ **Console** (chat, archive, reminders, jobs, hearth, settings) |
 | CLI | `openclaw …` | TUI-first, rich | ✦ `urfael` CLI **and** `urfael tui` full-screen ANSI cockpit (streamed transcript + tool rows, Esc-abort, terminal-safe) |
 | Voice (wake word, PTT, barge-in, local STT/TTS) | wake word, talk mode | CLI PTT, voice memos | ✦ orb (opt-in) + Console PTT + spoken remarks, all local |
-| Web dashboard | ✓ | ✓ | ✓ token-gated localhost dashboard (surfaces vitals, usage, reminders, jobs, the learning ledger + team audit trail; ask is request/response). Functionally parity; **security-hardened** — 127.0.0.1-only, constant-time token, no path serving (off-box access needs your own tunnel) |
+| Web dashboard | ✓ | ✓ | ✓ token-gated localhost dashboard (surfaces vitals, usage+budget, reminders, jobs, the learning ledger + team audit trail; **ask now STREAMS token-by-token** to the browser). Functionally parity; **security-hardened** — 127.0.0.1-only, constant-time token, no path serving (off-box access needs your own tunnel) |
 | Mobile nodes / canvas | iOS/Android, A2UI canvas | ✗ | ✗ — non-goal for now (phone via bridges) |
 | REST API | WS gateway | OpenAI-compatible REST | ✓ OpenAI-compatible `/v1/chat/completions`+`/v1/models` (127.0.0.1-only, token-gated) — drives Open WebUI/LibreChat/any OpenAI client |
 
