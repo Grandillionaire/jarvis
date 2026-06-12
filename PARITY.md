@@ -102,15 +102,23 @@ SHIPPED since (workflow 3, adversarially reviewed): Email bridge (IMAP IDLE, dra
 
 SHIPPED since: OpenAI-compatible API (`urfael serve`), scheduled agent jobs (`urfael cron`), migration importer (`urfael import`), email MIME decode, Linux port.
 
-SHIPPED since (workflow 4, adversarially reviewed): **webhook event triggers** (`urfael hooks` + `urfael hook add`) —
-the last hard ✗. A loopback-only receiver forwards (secret, payload) to the daemon over the socket; the daemon
-checks a per-hook 256-bit secret constant-time against a sha256-hashed registry and runs a `notify` (no LLM) or a
-no-egress, untrusted-framed `ask`. The moat holds: no daemon port, no enumeration, no shell/write/web on a trigger.
+SHIPPED since (the "every Hermes feature" sweep, each adversarially reviewed + tested + committed):
+- **webhook event triggers** (`urfael hooks` + `urfael hook add`) — the last hard ✗. A loopback-only receiver
+  forwards (secret, payload) to the daemon over the socket; the daemon checks a per-hook 256-bit secret
+  constant-time against a sha256-hashed registry and runs a `notify` (no LLM) or a no-egress, untrusted-framed
+  `ask`. No daemon port, no enumeration, no shell/write/web on a trigger.
+- **recall at scale** — a persistent BM25 inverted index (the FTS5-equivalent, pure-JS): warm, persisted,
+  caught up incrementally by a byte watermark, covering the WHOLE archive with O(query) lookups; the BM25
+  shortlist is re-ranked by semantic vectors via RRF. Fail-soft to the legacy scan.
+- **per-turn user-model dialectic** (`URFAEL_USERMODEL`) — Honcho-equivalent theory-of-mind: infers goals/
+  intent/values + likely next needs, refines a structured USER.md in place, framed-untrusted + write-scoped.
+- **cron chaining + no-agent script jobs** — `--script` (no-LLM shell, opt-in `URFAEL_SCRIPT_CRON`) and `--then`
+  chaining (output threaded as `$URFAEL_PREV` / untrusted context, depth-bounded).
+- **one-line curl installer** (`get.sh`) — clones + runs install.sh; read-it-first short, clone path recommended.
 
-REMAINING (deliberate non-goals in *italic*, real-but-optional otherwise):
+REMAINING — only VERIFICATION-blocked residuals + deliberate non-goals (*italic*); no missing Hermes *capability*:
 1. *200+ model providers* — conflicts with the claude-CLI harness (speed, flat-rate, the clean ToS story); other models work today via a documented proxy on the user's own keys.
 2. *Serverless exec backends (Modal/Daytona)* — paid third-party infra; SSH covers remote.
-3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — low value per unit, each unverified without an account.
-4. ~~Honcho-style per-turn dialectic user modeling~~ shipped — opt-in `URFAEL_USERMODEL` theory-of-mind dialectic refines a structured USER.md per turn; distill still keeps the durable model at conversation end.
-5. Windows port; richer TUI (modal pickers, live multi-session). ~~embedding recall over BM25~~ and ~~recall-at-scale~~ shipped (persistent inverted index + RRF vector re-rank).
-6. *Battle-testing at scale* — only real users and time add this.
+3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — the multi-channel capability is at parity; the extra adapters are long-tail and **can't be verified without the owner's account**, so we won't ship them claiming they work.
+4. Windows port — code-complete (notify/voice branches), **hardware-gated** verification; richer TUI (modal pickers, live multi-session) is polish.
+5. *Battle-testing at scale* — only real users and time add this.
