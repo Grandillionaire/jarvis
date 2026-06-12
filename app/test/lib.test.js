@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, normalizeCron, nextOccurrence, normalizeHook, hashHookSecret, hookSecretOk, parseCron, nextCronTime } = require('../lib');
+const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, normalizeCron, nextOccurrence, normalizeHook, hashHookSecret, hookSecretOk, parseCron, nextCronTime, parseDays } = require('../lib');
 
 test('routing: code/dev → Opus', () => {
   for (const q of ['debug this python function', 'refactor the auth module', 'push my code to the repo', 'architect a caching layer'])
@@ -358,6 +358,38 @@ test('cron-syntax: reminders accept cron too (first fire seeded, no explicit at 
   const NOWX = new Date(2026, 5, 12, 9, 17, 0).getTime();
   const r = normalizeReminder({ text: 'drink water', repeat: { cron: '0 */2 * * *' } }, NOWX);
   assert.ok(r && r.repeat.cron === '0 */2 * * *' && r.at > NOWX);
+});
+
+// ---- WEEKDAY RECURRENCE -------------------------------------------------------------------------------
+test('weekday: parseDays accepts names, numbers, aliases; dedupes/sorts; junk → null', () => {
+  assert.deepEqual(parseDays('mon,wed,fri'), [1, 3, 5]);
+  assert.deepEqual(parseDays(['Mon', 'mon', 3, 'friday']), [1, 3, 5]);
+  assert.deepEqual(parseDays('weekdays'), [1, 2, 3, 4, 5]);
+  assert.deepEqual(parseDays('weekend'), [0, 6]);
+  assert.deepEqual(parseDays('sun mon'), [0, 1]);
+  for (const bad of ['', 'blursday', 'xyz', [], [9, -1, 'nope'], 7, null, {}]) assert.equal(parseDays(bad), null, JSON.stringify(bad));
+});
+test('weekday: normalizeCron seeds the first fire on the next matching weekday at the time', () => {
+  const NOWX = new Date(2026, 5, 12, 9, 17, 0).getTime(); // Fri 2026-06-12 09:17 local
+  const c = normalizeCron({ prompt: 'gym reminder', repeat: { days: 'mon,wed,fri', at: '07:30' } }, NOWX);
+  assert.deepEqual(c.repeat, { days: [1, 3, 5], at: '07:30' });
+  const d = new Date(c.at);
+  assert.ok([1, 3, 5].includes(d.getDay()) && d.getHours() === 7 && d.getMinutes() === 30 && c.at > NOWX);
+  // from Fri 09:17 the next Mon/Wed/Fri@07:30 is MONDAY (Fri 07:30 already passed today)
+  assert.equal(d.getDay(), 1);
+});
+test('weekday: nextOccurrence rolls forward to the next listed day; bad spec fail-closed', () => {
+  const NOWX = new Date(2026, 5, 12, 9, 17, 0).getTime();
+  const c = normalizeCron({ prompt: 'p', repeat: { days: 'weekdays', at: '09:00' } }, NOWX);
+  const first = c.at; nextOccurrence(c, first);
+  assert.ok(c.at > first && [1, 2, 3, 4, 5].includes(new Date(c.at).getDay()));
+  assert.equal(normalizeCron({ prompt: 'p', repeat: { days: 'blursday', at: '09:00' } }, NOWX), null); // unparseable days → null
+  assert.equal(normalizeCron({ prompt: 'p', repeat: { days: 'mon', at: '25:00' } }, NOWX), null);      // bad time → null
+});
+test('weekday: reminders accept the days shape too', () => {
+  const NOWX = new Date(2026, 5, 12, 9, 17, 0).getTime();
+  const r = normalizeReminder({ text: 'standup', repeat: { days: 'mon,tue,wed,thu,fri', at: '09:15' } }, NOWX);
+  assert.ok(r && r.repeat.days.length === 5 && r.repeat.at === '09:15' && r.at > NOWX);
 });
 
 // ---- CRON: no-agent script jobs + chaining ------------------------------------------------------------

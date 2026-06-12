@@ -110,7 +110,9 @@ curl -s --unix-socket ~/.claude/urfael/daemon.sock -X POST http://x/remind \
   -d '{"text":"Call Stefan about the contract","inMins":20}'
 ```
 - One-shot at a time: `{"text":"...","at":"2026-06-11T15:00:00"}` (local time ISO).
-- Recurring: add `"repeat":"daily"` / `"repeat":"weekly"` / `"repeat":{"everyMins":120}`.
+- Recurring: `"repeat":"daily"` / `"repeat":"weekly"` / `"repeat":{"everyMins":120}` / `"repeat":{"dailyAt":"08:00"}`
+  / **weekday** `"repeat":{"days":"mon,wed,fri","at":"07:30"}` (also `"weekdays"`/`"weekend"`) / **cron** `"repeat":{"cron":"*/15 9-17 * * 1-5"}`.
+  Convert the user's natural language to whichever shape fits ("every weekday at 9" → `{"days":"weekdays","at":"09:00"}`).
 - List: `curl -s --unix-socket ~/.claude/urfael/daemon.sock http://x/reminders`
 - Cancel: `curl -s --unix-socket ~/.claude/urfael/daemon.sock -X POST http://x/reminder/<id>/cancel`
 Confirm in one spoken line what you scheduled and when it fires. Phrase the reminder `text` as you would
