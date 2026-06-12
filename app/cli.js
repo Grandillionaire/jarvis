@@ -15,6 +15,9 @@
 //   urfael cron [add "<prompt>" --daily-at HH:MM | --in N | --repeat daily] [list|cancel <id>|run <id>]
 //                                              scheduled AGENT jobs — runs the brain on a schedule, delivers the result
 //   urfael serve [--token]                     start the OpenAI-compatible local API (Open WebUI / any OpenAI client)
+//   urfael hooks                               start the loopback webhook receiver (event triggers) — prints its URL
+//   urfael hook add "<name>" [--action ask|notify] [--deliver notify|silent|push]   register a webhook (prints the secret once)
+//   urfael hook [list | rm <id>]               list / remove webhook event triggers
 //   urfael import [--from openclaw|hermes] [--apply]   migrate memory + skills from another assistant (dry-run by default)
 //   urfael skills list                         your installed skills (name + description)
 //   urfael skills export <name>                print a skill to stdout to share it
@@ -208,6 +211,19 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     return;
   }
 
+  // hooks: ensure the loopback webhook receiver is up (spawn detached if not), print its base URL. Runs BEFORE
+  // ensureDaemon — it manages its own lifecycle and proxies the daemon socket on demand. OFF until you run this.
+  if (cmd === 'hooks') {
+    const port = parseInt(process.env.URFAEL_HOOKS_PORT, 10) || 7718;
+    const HOOKS = path.join(__dirname, 'hooks.js');
+    const up = () => new Promise((r) => { const s = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', timeout: 800 }, (res) => { res.resume(); r(true); }); s.on('error', () => r(false)); s.on('timeout', () => { s.destroy(); r(false); }); s.end(); });
+    if (!(await up())) { try { const p = spawn(process.execPath, [HOOKS], { detached: true, stdio: 'ignore' }); p.unref(); } catch {} for (let i = 0; i < 20; i++) { await new Promise((r) => setTimeout(r, 300)); if (await up()) break; } }
+    console.log(gold(`http://127.0.0.1:${port}/hook/<id>`) + dim('  (webhook receiver · localhost only · per-hook secret)'));
+    console.log(dim('  register a hook:  ') + gold('urfael hook add "my trigger"'));
+    console.log(dim('  external events:  point your own tunnel (cloudflared / ngrok / ssh -R) at this port'));
+    return;
+  }
+
   if (!(await ensureDaemon())) { console.error('✗ brain offline and could not be started'); process.exit(1); }
   // tui: hand the terminal to the full-screen cockpit (ensureDaemon ran first so spawn logs can't corrupt the alt buffer)
   if (cmd === 'tui') { require('./tui').run(); return; }
@@ -239,6 +255,30 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     const cj = await req('GET', '/cron');
     if (!cj || !cj.length) { console.log('no scheduled jobs'); return; }
     for (const j of cj) console.log(`${j.id}  ${gold((j.at || '').replace('T', ' ').slice(0, 16))}  ${(j.prompt || '').slice(0, 60)}${j.repeat ? dim('  (' + JSON.stringify(j.repeat) + ')') : ''}`);
+    return;
+  }
+  if (cmd === 'hook') {
+    // manage webhook event triggers. `add` prints the secret ONCE; store it (sent as the X-Urfael-Hook header).
+    const sub = rest[0];
+    if (sub === 'add' && rest[1]) {
+      const name = rest.slice(1).filter((a, i) => !a.startsWith('--') && !(rest[i] || '').startsWith('--')).join(' ');
+      const spec = { name };
+      if (flag(rest, '--action')) spec.action = flag(rest, '--action');
+      if (flag(rest, '--deliver')) spec.deliver = flag(rest, '--deliver');
+      const r = await req('POST', '/hooks', spec);
+      if (!r || r.error) { console.error('✗ ' + ((r && r.error) || 'failed')); process.exit(1); }
+      const port = parseInt(process.env.URFAEL_HOOKS_PORT, 10) || 7718;
+      console.log(gold('✓ webhook ' + r.id) + dim('  action=' + r.action + ' · deliver=' + r.deliver));
+      console.log('  URL     ' + gold(`http://127.0.0.1:${port}/hook/${r.id}`));
+      console.log('  secret  ' + gold(r.secret) + dim('  (shown once — store it)'));
+      console.log(dim('  test:   ') + `curl -X POST -H "X-Urfael-Hook: ${r.secret}" --data 'hello' http://127.0.0.1:${port}/hook/${r.id}`);
+      console.log(dim('  start the receiver if you have not:  ') + gold('urfael hooks'));
+      return;
+    }
+    if ((sub === 'rm' || sub === 'remove') && rest[1]) { const r = await req('POST', '/hook/' + rest[1] + '/delete'); console.log(r && r.ok ? gold('✓ removed ' + rest[1]) : '✗ no such hook'); return; }
+    const hs = await req('GET', '/hooks');
+    if (!hs || !hs.length) { console.log(dim('no webhooks yet — create one:  ') + gold('urfael hook add "my trigger"')); return; }
+    for (const h of hs) console.log(`${gold(h.id)}  ${dim((h.action + '/' + h.deliver).padEnd(14))} ${h.name}`);
     return;
   }
   if (cmd === 'team') {

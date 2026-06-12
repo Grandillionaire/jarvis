@@ -37,6 +37,15 @@ function tcp(method, port, p, headers) {
     req.on('error', () => resolve({ status: 0 })); req.on('timeout', () => { req.destroy(); resolve({ status: 0 }); }); req.end();
   });
 }
+// like tcp(), but over the daemon's owner-only unix socket (for the webhook-trigger checks).
+function sock(method, p, body) {
+  return new Promise((resolve) => {
+    const data = body != null ? JSON.stringify(body) : null;
+    const req = http.request({ socketPath: SOCK, method, path: p, headers: { 'Content-Type': 'application/json' }, timeout: 4000 }, (res) => { let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => resolve({ status: res.statusCode, raw: b })); });
+    req.on('error', () => resolve({ status: 0, raw: '' })); req.on('timeout', () => { req.destroy(); resolve({ status: 0, raw: '' }); });
+    if (data) req.write(data); req.end();
+  });
+}
 
 let daemon, dash;
 async function main() {
@@ -166,6 +175,22 @@ async function main() {
   check('the unrestricted shell (YOLO) is OFF by default', !yolo, 'opt-in only, and logged when enabled');
   check('the default permission mode is NOT bypass', (process.env.URFAEL_PERMISSION_MODE || 'acceptEdits') !== 'bypassPermissions', 'acceptEdits; risky tools gated');
   check('an unknown channel gets the MOST-restricted profile, not the least', lib.resolveProfile('something-new').name === 'untrusted', 'fail-closed default');
+
+  // ── 8. INBOUND WEBHOOK TRIGGER ────────────────────────────────────────────
+  attackClass('Inbound event trigger — an external webhook must not become an escalation',
+    'Hermes-class agents accept inbound webhooks; an unauthenticated or over-powered trigger turns "an event arrived" into RCE/exfil. Urfael keeps the moat: a loopback-only receiver, a per-hook secret, and a no-egress action.');
+  const hooksSrc = fs.readFileSync(path.join(APP, 'hooks.js'), 'utf8');
+  check('the webhook receiver binds LOOPBACK only (127.0.0.1)', /HOST = '127\.0\.0\.1'/.test(hooksSrc) && /server\.listen\(PORT, HOST,/.test(hooksSrc) && !/listen\([^)]*'0\.0\.0\.0'/.test(hooksSrc), 'no port opened on the daemon — external events need YOUR own tunnel');
+  const created = await sock('POST', '/hooks', { name: 'sec-test', action: 'notify', deliver: 'silent' });
+  let hid = '', hsec = ''; try { const j = JSON.parse(created.raw); hid = j.id; hsec = j.secret; } catch {}
+  check('a hook fire with the WRONG secret → 401 (constant-time, hashed registry)', (await sock('POST', '/hook/' + hid, { secret: 'wrong', payload: 'x' })).status === 401, 'secret checked by sha256 hash, never plaintext');
+  check('a fire to a NONEXISTENT hook id → 401 (no hook enumeration)', (await sock('POST', '/hook/hk_000000000000', { secret: 'x', payload: 'y' })).status === 401, 'a missing hook is checked against a dummy hash');
+  check('a hook fire with the CORRECT secret is accepted (202)', hid && (await sock('POST', '/hook/' + hid, { secret: hsec, payload: 'build ok' })).status === 202, 'authenticated trigger runs');
+  check('listing hooks NEVER leaks the secret or its hash', !/secret|secretHash/i.test((await sock('GET', '/hooks')).raw), 'only id/name/action/deliver/createdAt');
+  check('a webhook "ask" action runs NO-EGRESS (Read/Grep/Glob — no WebFetch/Write/Bash)', /allowedTools: 'Read,Grep,Glob'/.test(daemonSrc) && /function fireHook/.test(daemonSrc), 'an attacker-controlled payload has no network/shell/write to abuse');
+  check('the hook secret is stored HASHED, never in plaintext', /secretHash: hashHookSecret\(secret\)/.test(daemonSrc), 'sha256 in the registry; plaintext shown once at creation');
+  check('an attacker-steered result can\'t arg-inject the notifier (leading "-" neutralized)', /clean\[0\] === '-'/.test(daemonSrc), 'a brain result starting with "-" is defanged before `say`/notify-send');
+  if (hid) await sock('POST', '/hook/' + hid + '/delete'); // cleanup the test hook
 
   // ── teardown + verdict ────────────────────────────────────────────────────
   try { dash && dash.kill(); } catch {}

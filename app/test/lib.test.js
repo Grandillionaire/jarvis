@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, normalizeCron, nextOccurrence } = require('../lib');
+const { classifyModel, segmentSentences, MODELS, resolveProfile, normalizeReminder, normalizeCron, nextOccurrence, normalizeHook, hashHookSecret, hookSecretOk } = require('../lib');
 
 test('routing: code/dev → Opus', () => {
   for (const q of ['debug this python function', 'refactor the auth module', 'push my code to the repo', 'architect a caching layer'])
@@ -319,4 +319,31 @@ test('mode: a GUEST is restricted in BOTH modes, and NO mode/role ever reaches "
   for (const role of ['owner', 'member', 'guest', 'admin', '', null, ['owner']])
     for (const mode of ['fortress', 'full', undefined, 'LOCAL'])
       assert.notEqual(profileFor(role, mode).name, 'local', JSON.stringify([role, mode]));
+});
+
+// ---- WEBHOOK EVENT TRIGGERS ----------------------------------------------------------------------------
+test('hook: normalize defaults action=ask deliver=notify, clamps name, strips control chars', () => {
+  assert.deepEqual(normalizeHook({ name: 'deploy done' }), { name: 'deploy done', action: 'ask', deliver: 'notify' });
+  assert.deepEqual(normalizeHook({ name: 'x', action: 'notify', deliver: 'push' }), { name: 'x', action: 'notify', deliver: 'push' });
+  assert.equal(normalizeHook({ name: 'a'.repeat(200) }).name.length, 60);              // clamped
+  assert.equal(normalizeHook({ name: 'be\x00ll\x07' }).name, 'be ll');                  // control chars → space
+});
+test('hook: normalize is fail-closed (unusable spec → null; unknown action/deliver fall back safely)', () => {
+  for (const bad of [null, undefined, 'x', [], {}, { name: '' }, { name: '   ' }, { name: 7 }])
+    assert.equal(normalizeHook(bad), null, JSON.stringify(bad));
+  assert.equal(normalizeHook({ name: 'x', action: 'shell' }).action, 'ask');            // unknown action → ask, NEVER a new power
+  assert.equal(normalizeHook({ name: 'x', action: 'Bash' }).action, 'ask');
+  assert.equal(normalizeHook({ name: 'x', deliver: 'email' }).deliver, 'notify');
+});
+test('hook: secret is checked by HASH, constant-time, and a wrong/garbage secret never validates', () => {
+  const secret = 'a'.repeat(64);
+  const stored = hashHookSecret(secret);
+  assert.match(stored, /^[0-9a-f]{64}$/);                                                // sha256 hex
+  assert.notEqual(stored, secret);                                                       // never stores the plaintext
+  assert.equal(hookSecretOk(secret, stored), true);                                      // correct secret → ok
+  for (const wrong of ['', 'b'.repeat(64), secret + 'x', secret.slice(1), 7, null, {}, [secret]])
+    assert.equal(hookSecretOk(wrong, stored), false, JSON.stringify(wrong));
+  // a malformed/empty stored hash (e.g. a corrupt registry) must NEVER validate, even against its own preimage
+  for (const badStore of ['', '0'.repeat(64), 'zz', stored.toUpperCase(), null])
+    assert.equal(hookSecretOk(secret, badStore), false, JSON.stringify(badStore));
 });

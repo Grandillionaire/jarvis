@@ -27,7 +27,7 @@
 ## Channels
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
-| Count | 24+ | ~21 adapters | 5 (Telegram, Discord, Slack, iMessage, Email) + notify push |
+| Count | 24+ | ~21 adapters | 8 (Telegram, Discord, Slack, iMessage, Email, Matrix, Signal, WhatsApp) + notify push |
 | Voice memos | ✓ | ✓ | ✓ (local whisper, never cloud) |
 | Pairing/allowlist security | pairing codes | pairing codes | ✦ **team mode**: per-channel roster of allowlisted principals + roles, role only NARROWS the sandbox (forged role never reaches local), per-principal attribution + `urfael audit` trail. See docs/TEAM-MODE.md |
 | Next | — | — | (Telegram/Discord/Slack/iMessage/Email all shipped; owner-allowlisted + auto-sandboxed) |
@@ -61,7 +61,7 @@
 |---|---|---|---|
 | Heartbeat (main-session checklist, silence contract) | ✦ invented it | ✗ | ✓ HEARTBEAT.md + HEARTBEAT_OK + active hours + busy-backoff |
 | Cron / NL scheduling | ✓ | ✓ rich (chaining, no-agent scripts) | ✓ reminders + **scheduled agent jobs** (`/cron`: run the brain on a schedule, read/fetch-only sandbox, deliver via notify/say/push, [silent]) |
-| Event triggers (webhooks, email push) | ✓ | ✓ | ✗ — planned (daemon webhook endpoint, gated) |
+| Event triggers (webhooks, email push) | ✓ | ✓ | ✦ **webhook event triggers** — a LOOPBACK-only receiver (the daemon never opens a port), each hook gated by its own 256-bit secret (sha256-hashed, constant-time), payload framed UNTRUSTED; the `ask` action runs the brain NO-EGRESS (Read/Grep/Glob), result to the owner only. Tunnel it yourself for external events. See docs/HOOKS.md |
 
 ## Agents & execution
 | | OpenClaw | Hermes | Urfael |
@@ -101,6 +101,11 @@ SHIPPED since (workflow 3, adversarially reviewed): Email bridge (IMAP IDLE, dra
 `urfael tui` full-screen cockpit · BM25 ranked recall (daemon /recall) · macOS menu-bar tray.
 
 SHIPPED since: OpenAI-compatible API (`urfael serve`), scheduled agent jobs (`urfael cron`), migration importer (`urfael import`), email MIME decode, Linux port.
+
+SHIPPED since (workflow 4, adversarially reviewed): **webhook event triggers** (`urfael hooks` + `urfael hook add`) —
+the last hard ✗. A loopback-only receiver forwards (secret, payload) to the daemon over the socket; the daemon
+checks a per-hook 256-bit secret constant-time against a sha256-hashed registry and runs a `notify` (no LLM) or a
+no-egress, untrusted-framed `ask`. The moat holds: no daemon port, no enumeration, no shell/write/web on a trigger.
 
 REMAINING (deliberate non-goals in *italic*, real-but-optional otherwise):
 1. *200+ model providers* — conflicts with the claude-CLI harness (speed, flat-rate, the clean ToS story); other models work today via a documented proxy on the user's own keys.

@@ -7,7 +7,7 @@
 > ```
 >
 > It boots the real daemon and dashboard and attacks them the way the wild did — then prints a pass/fail
-> table. As of the latest run: **7/7 real-world attack classes resisted · 37/37 checks passed.**
+> table. As of the latest run: **8/8 real-world attack classes resisted · 48/48 checks passed.**
 
 Self-hosted AI agents were not compromised hypothetically in 2026. They were compromised in production:
 
@@ -29,6 +29,7 @@ Urfael was designed against exactly these. The benchmark proves it, defense by d
 | 5 | **Unauthenticated DoS / crash-loop** | A malformed request that crashes a restarted service is a remote no-auth DoS (we caught one in our *own* review) | Malformed input → 401/400, **not a crash**; bodies capped; rate-limited; no filesystem path from the URL | malformed cookie → 401, process survives; traversal → 404 |
 | 6 | **Secret theft by a runaway agent** | An agent with a shell + your secrets is one injection from reading them | The Docker sandbox **stages only the claude auth files** (never `bridge.env` / API keys) and is **`--network none`** by default; and across *every* spawned session the vault `permissions.deny` blocks reading the credential stores outright | the goal-loop never mounts `~/.claude`; the vault denies `Read(~/.claude/**)` etc. (beats the permission mode) |
 | 7 | **Insecure defaults** | OpenClaw shipped `security:full` + `ask:off` on the host | The unrestricted shell is **off by default** (opt-in + logged); default mode is not bypass; an unknown channel gets the **most-restricted** profile | YOLO off; unknown channel → `untrusted` |
+| 8 | **Inbound event trigger → escalation** | Hermes-class agents accept inbound webhooks; an unauthenticated or over-powered trigger turns "an event arrived" into RCE/exfil | The receiver binds **`127.0.0.1` only** (no daemon port); each hook needs its own **256-bit secret** (sha256-hashed, **constant-time**); a missing hook is checked against a dummy hash (**no enumeration**); the `ask` action runs **no-egress** (Read/Grep/Glob — no web/shell/write), payload framed UNTRUSTED, result to the owner only | wrong/unknown secret → 401; list never leaks the secret; `ask` allowlist is `Read,Grep,Glob`; secret stored hashed |
 
 ## Why this is the differentiator
 
