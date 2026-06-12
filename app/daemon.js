@@ -90,6 +90,11 @@ function scopedEnv() {
   return env;
 }
 const LOCAL_MODE = !!process.env.ANTHROPIC_BASE_URL || process.env.CLAUDE_CODE_USE_BEDROCK === '1' || process.env.CLAUDE_CODE_USE_VERTEX === '1'; // not the default Anthropic cloud → cost meter is meaningless
+// FORTRESS (default) vs FULL. The OWNER opts into Full via URFAEL_MODE=full; it widens owner/member REMOTE turns
+// to web+write+search (Hermes-level reach) while still keeping no-shell, no-bypass, framing, and the credential
+// deny. It is the daemon's env — a remote sender can NEVER select it. Anything but 'full' is Fortress.
+const AGENT_MODE = String(process.env.URFAEL_MODE || 'fortress').toLowerCase() === 'full' ? 'full' : 'fortress';
+if (AGENT_MODE === 'full') { try { logEvent({ ev: 'WARN', msg: 'URFAEL_MODE=full — remote owner/member turns can browse the web + write files (still sandboxed: no shell, no bypass, credential-deny holds).' }); } catch {} }
 
 // the in-flight /ask response stream — brain events are written to it as NDJSON
 let active = null;
@@ -330,7 +335,7 @@ function vitals() {
   // proxy, or Bedrock/Vertex on your own account) the Anthropic-rate meter is meaningless, so we zero it and
   // flag `local: true` rather than show a fabricated dollar figure. Only ADD fields here — the HUD depends on
   // the existing /vitals shape, so this stays backward-compatible.
-  return { warm: [...sessions.keys()], model: convoModel, turnsToday, avgMs, errors, tokToday, costToday: LOCAL_MODE ? 0 : Math.round(costToday * 100) / 100, local: LOCAL_MODE, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+  return { warm: [...sessions.keys()], model: convoModel, mode: AGENT_MODE, turnsToday, avgMs, errors, tokToday, costToday: LOCAL_MODE ? 0 : Math.round(costToday * 100) / 100, local: LOCAL_MODE, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
 }
 
 // ---- usage summary: tokens / turns / ESTIMATED cost over today / last 7d / last 30d ---------------
@@ -786,7 +791,7 @@ const server = http.createServer(async (req, res) => {
     // its profile comes from the principal's ROLE (TEAM MODE), which can only NARROW access — never reach local.
     // A remote turn is therefore never full-power regardless of a forged role (profileFor returns untrusted|guest).
     const remote = 'channel' in parsed && parsed.channel;
-    const profile = remote ? profileFor(parsed.role) : resolveProfile('local');
+    const profile = remote ? profileFor(parsed.role, AGENT_MODE) : resolveProfile('local');
     if (profile.name !== 'local') {
       // remote/untrusted: sandboxed one-shot that runs CONCURRENTLY (its own process) — it never touches the
       // voice stream's `active` nor the serialized local chain, so phone traffic can't block or cross the mic.

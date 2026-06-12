@@ -106,6 +106,10 @@ async function main() {
     if (saved === undefined) delete process.env.ANTHROPIC_BASE_URL; else process.env.ANTHROPIC_BASE_URL = saved;
     return same && !p.allowedTools.some((t) => /WebFetch|WebSearch|Bash/.test(t)) && p.trustFraming === true;
   })(), 'harness-enforced — identical profile with a provider configured');
+  // FORTRESS (secure) is the DEFAULT; FULL is an owner-only opt-in that widens reach but never grants a shell,
+  // a bypass, or an unframed remote — so even the "do what Hermes does" mode stays safer than an unsandboxed default.
+  check('FORTRESS is the default: with no URFAEL_MODE, a remote owner is read-only / no egress', !lib.profileFor('owner').allowedTools.some((t) => /WebFetch|WebSearch|Write|Bash/.test(t)) && lib.profileFor('owner').name === 'untrusted', 'secure by default');
+  check('FULL mode never grants a shell, a bypass, or an unframed remote', (() => { const p = lib.profileFor('owner', 'full'); return !p.allowedTools.some((t) => /Bash/.test(t)) && p.permissionMode !== 'bypassPermissions' && p.trustFraming === true; })(), 'no shell / no bypass / still framed, even at full reach');
   // a forged From in an email body can't impersonate an allowlisted sender
   const eb = require(path.join(APP, 'bridge', 'email-bridge.js'));
   const forged = eb.parseFetch(['* 1 FETCH (BODY[HEADER.FIELDS (FROM)] {26}', 'From: attacker@evil.com', '', ' BODY[TEXT] {30}', 'From: owner@allowed.com', ')']);

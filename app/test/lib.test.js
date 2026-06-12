@@ -293,3 +293,29 @@ test('team remove: removes by id, reports removed, drops the channel when empty'
   // removing a non-member reports false
   assert.equal(removePrincipal(start, 'telegram', '999').removed, false);
 });
+
+// ---- FORTRESS vs FULL mode (the secure-default + opt-in-capable switch) ----
+test('mode: FORTRESS is the default — owner/member remote turns stay read-only, no egress', () => {
+  for (const m of [undefined, 'fortress', '', 'FORTRESS', 'nonsense', null]) {
+    const p = profileFor('owner', m);
+    assert.equal(p.name, 'untrusted', 'default/fortress = untrusted for ' + JSON.stringify(m));
+    assert.ok(!p.allowedTools.some((t) => /WebFetch|WebSearch|Write|Edit|Bash/.test(t)), 'no egress/write in fortress');
+  }
+});
+
+test('mode: FULL widens owner/member to web+write (Hermes-level) — but NEVER a shell, bypass, or unframed', () => {
+  const p = profileFor('member', 'full');
+  assert.equal(p.name, 'full');
+  assert.ok(p.allowedTools.includes('WebFetch') && p.allowedTools.includes('Write') && p.allowedTools.includes('Grep'));
+  assert.ok(!p.allowedTools.some((t) => /Bash/.test(t)), 'FULL mode still has NO unsandboxed shell');
+  assert.equal(p.permissionMode, 'acceptEdits'); assert.notEqual(p.permissionMode, 'bypassPermissions');
+  assert.equal(p.trustFraming, true, 'remote content is still untrusted-framed in full mode');
+});
+
+test('mode: a GUEST is restricted in BOTH modes, and NO mode/role ever reaches "local"', () => {
+  assert.equal(profileFor('guest', 'full').name, 'guest');
+  assert.deepEqual(profileFor('guest', 'full').allowedTools, ['Read']);
+  for (const role of ['owner', 'member', 'guest', 'admin', '', null, ['owner']])
+    for (const mode of ['fortress', 'full', undefined, 'LOCAL'])
+      assert.notEqual(profileFor(role, mode).name, 'local', JSON.stringify([role, mode]));
+});

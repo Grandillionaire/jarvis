@@ -215,7 +215,7 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
   if (cmd === 'shutdown') { await req('POST', '/shutdown').catch(() => {}); console.log('brain stopped'); return; }
   if (cmd === 'status') {
     const v = await req('GET', '/vitals');
-    console.log(gold('Urfael') + dim(' · the brain is warm'));
+    console.log(gold('Urfael') + dim(' · the brain is warm') + (v.mode === 'full' ? '  ' + '\x1b[38;5;208mFULL mode\x1b[0m' : dim('  · fortress mode')));
     console.log(`  model     ${v.model}    warm: ${(v.warm || []).join(', ')}`);
     console.log(`  today     ${v.turnsToday} turns · ${v.tokToday >= 1000 ? Math.round(v.tokToday / 1000) + 'k tokens' : (v.tokToday || 0) + ' tokens'} · avg ${v.avgMs}ms`);
     console.log(`  memory    ${v.memCommits} commits    uptime ${Math.round(v.uptimeS / 60)}m    brain restarts today: ${v.errors}`);
