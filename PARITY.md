@@ -38,7 +38,7 @@
 | Curated memory file(s) | MEMORY.md + daily notes | MEMORY.md (2.2k cap) + USER.md | ✦ MEMORY/USER/LESSONS/WORKFLOW, no hard cap, git-versioned |
 | Session search | memory_search (vector+kw) | FTS5 SQLite | ✦ **hybrid recall at scale**: a persistent BM25 **inverted index** (the FTS5-equivalent, pure-JS, no native dep) — built once, kept warm, persisted, caught up INCREMENTALLY by a per-file byte watermark, covering the **whole archive** (not a tail window) with O(query-term) lookups; the BM25 shortlist is re-ranked by optional local semantic vectors via RRF (paraphrases with zero shared tokens surface); fail-soft to a bounded scan, no cloud, no DB to corrupt |
 | Consolidation | "dreaming" pass | post-turn background review | ✓ end-of-conversation distill (cheaper; per-turn review planned as opt-in) |
-| User modeling | — | Honcho dialectic | ◐ USER.md auto-curated (no per-turn dialectic) |
+| User modeling | — | Honcho dialectic | ✓ structured **USER.md** + opt-in **per-turn theory-of-mind dialectic** (`URFAEL_USERMODEL`): infers the user's goals/intent/values and predicts likely next needs, refined IN PLACE each turn — framed-untrusted, write-scoped to USER.md, no separate service/DB. Distill still updates the durable model at conversation end |
 
 ## Interop & migration
 | | OpenClaw | Hermes | Urfael |
@@ -111,6 +111,6 @@ REMAINING (deliberate non-goals in *italic*, real-but-optional otherwise):
 1. *200+ model providers* — conflicts with the claude-CLI harness (speed, flat-rate, the clean ToS story); other models work today via a documented proxy on the user's own keys.
 2. *Serverless exec backends (Modal/Daytona)* — paid third-party infra; SSH covers remote.
 3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — low value per unit, each unverified without an account.
-4. Honcho-style per-turn dialectic user modeling (USER.md covers the durable model).
+4. ~~Honcho-style per-turn dialectic user modeling~~ shipped — opt-in `URFAEL_USERMODEL` theory-of-mind dialectic refines a structured USER.md per turn; distill still keeps the durable model at conversation end.
 5. Windows port; richer TUI (modal pickers, live multi-session). ~~embedding recall over BM25~~ and ~~recall-at-scale~~ shipped (persistent inverted index + RRF vector re-rank).
 6. *Battle-testing at scale* — only real users and time add this.

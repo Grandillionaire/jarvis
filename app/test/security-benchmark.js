@@ -166,6 +166,10 @@ async function main() {
   const hbBlock = daemonSrc.slice(daemonSrc.indexOf('async function heartbeat'), daemonSrc.indexOf('function distill'));
   check('the heartbeat (reads untrusted email) has NO egress tool', hbBlock.includes('--disallowedTools') && hbBlock.includes('WebFetch') && hbBlock.includes('WebSearch') && hbBlock.includes("'Bash'"), 'WebFetch/WebSearch/Bash disallowed');
   check('the cron sandbox is read/fetch-only (no Write/Edit/Bash)', /CRON_ALLOWED_TOOLS = 'Read,Grep,Glob,WebFetch,WebSearch'/.test(daemonSrc), 'no shell, no write on a scheduled untrusted-data turn');
+  // the per-turn USER-MODEL dialectic reads an UNTRUSTED transcript and writes USER.md — assert it's framed,
+  // never bypasses, and its only shell is git/cd (no arbitrary Bash), so a poisoned turn can't escalate it.
+  const umBlock = daemonSrc.slice(daemonSrc.indexOf('function modelUser'), daemonSrc.indexOf('function lastCurated'));
+  check('the per-turn user-model dialectic is framed UNTRUSTED, never bypasses, shell is git/cd-only', umBlock.includes('UNTRUSTED') && !umBlock.includes('bypassPermissions') && umBlock.includes('Bash(git:*)') && !umBlock.includes("'Bash'") && !/Bash\(\*\)/.test(umBlock), 'theory-of-mind on untrusted input, write-scoped, no arbitrary shell');
 
   // ── 7. INSECURE-BY-DEFAULT CONFIG ─────────────────────────────────────────
   attackClass('Insecure defaults',
