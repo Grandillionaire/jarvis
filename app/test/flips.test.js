@@ -2,7 +2,27 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { toUsage } = require('../openai-api');
-const { buildHeartbeatPrompt } = require('../lib');
+const { buildHeartbeatPrompt, budgetLimits, budgetState } = require('../lib');
+
+// ---- usage guardrail (flip: usage-guardrail) ----------------------------------------------------------
+test('budgetLimits: unset → dormant (fail-open); parses + clamps when set', () => {
+  const off = budgetLimits({});
+  assert.equal(off.active, false);
+  assert.equal(off.windowH, 5); assert.equal(off.warnPct, 80); assert.equal(off.hard, false);
+  const on = budgetLimits({ URFAEL_BUDGET_TURNS: '50', URFAEL_BUDGET_TOKENS: '1000000', URFAEL_BUDGET_WINDOW_H: '3', URFAEL_BUDGET_WARN_PCT: '90', URFAEL_BUDGET_HARD: '1' });
+  assert.deepEqual([on.turns, on.tokens, on.windowH, on.warnPct, on.hard, on.active], [50, 1000000, 3, 90, true, true]);
+  assert.equal(budgetLimits({ URFAEL_BUDGET_TURNS: '10', URFAEL_BUDGET_WARN_PCT: '999' }).warnPct, 100); // clamped
+  assert.equal(budgetLimits({ URFAEL_BUDGET_TURNS: '0' }).turns, null);                                  // non-positive → ignored
+});
+test('budgetState: ok < warnPct ≤ warn < 100 ≤ over, for turns OR tokens (whichever binds first)', () => {
+  const lim = budgetLimits({ URFAEL_BUDGET_TURNS: '100', URFAEL_BUDGET_TOKENS: '1000', URFAEL_BUDGET_WARN_PCT: '80' });
+  assert.equal(budgetState({ turnsWin: 10, tokWin: 10 }, lim).level, 'ok');
+  assert.equal(budgetState({ turnsWin: 85, tokWin: 0 }, lim).level, 'warn');   // turns hit warn
+  assert.equal(budgetState({ turnsWin: 10, tokWin: 950 }, lim).level, 'warn'); // tokens hit warn
+  assert.equal(budgetState({ turnsWin: 100, tokWin: 0 }, lim).level, 'over');  // turns over
+  assert.equal(budgetState({ turnsWin: 0, tokWin: 1200 }, lim).level, 'over'); // tokens over
+  assert.equal(budgetState({ turnsWin: 999, tokWin: 999 }, budgetLimits({})).level, 'ok'); // dormant → never blocks
+});
 
 // ---- OpenAI usage propagation (flip: openai-usage) ----------------------------------------------------
 test('toUsage: maps daemon tokens to the OpenAI shape (cached reads count as input)', () => {

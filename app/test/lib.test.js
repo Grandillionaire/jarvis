@@ -17,6 +17,17 @@ test('routing: "report" must not trip "repo"', () => {
   assert.equal(classifyModel('write a report on Q2'), MODELS.sonnet);
 });
 
+test('routing: explicit /opus //sonnet override forces the tier and strips the token', () => {
+  const { routeOverride } = require('../lib');
+  assert.deepEqual(routeOverride('/opus refactor the auth module'), { model: 'opus', text: 'refactor the auth module' });
+  assert.deepEqual(routeOverride('/sonnet what is the capital of France'), { model: 'sonnet', text: 'what is the capital of France' });
+  assert.deepEqual(routeOverride('/o ship it'), { model: 'opus', text: 'ship it' });
+  assert.deepEqual(routeOverride('/s hi'), { model: 'sonnet', text: 'hi' });
+  // no override → null (and an inline /opus mid-sentence is NOT an override)
+  for (const t of ['hello there', 'tell me about /opus the model', 'opus without slash', '', null])
+    assert.equal(routeOverride(t), null, JSON.stringify(t));
+});
+
 test('profile: local keeps full power (no tool allowlist, inherits permission mode)', () => {
   const p = resolveProfile('local');
   assert.equal(p.name, 'local');

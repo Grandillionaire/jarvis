@@ -98,8 +98,8 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
 | Providers | many | 300+ via portals | Claude only — **by design** (flat-rate subscription, zero keys) |
-| Routing | fallback chains | manual + aux models | ✓ sticky Sonnet↔Opus escalation; env overrides |
-| Usage visibility | ✓ | /usage + quotas | ✓ tokens/turn telemetry, Hearth, CLI status |
+| Routing | fallback chains | manual + aux models | ✓ sticky Sonnet↔Opus auto-escalation **+ explicit per-turn override** (`/opus …` / `/sonnet …`, stripped before the brain) + env overrides |
+| Usage visibility | ✓ | /usage + quotas | ✦ tokens/turn telemetry + Hearth + CLI status, **plus an ENFORCED usage guardrail** (`URFAEL_BUDGET_TURNS`/`_TOKENS` over a rolling window; warn at 80%, hard-stop new turns at 100% in `URFAEL_BUDGET_HARD=1`) — honest budgets in turns+tokens, not fabricated dollars; dormant until set |
 
 ## Security (our moat — keep it)
 | | OpenClaw | Hermes | Urfael |

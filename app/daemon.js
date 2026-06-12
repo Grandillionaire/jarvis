@@ -26,7 +26,7 @@ const crypto = require('crypto');
     }
   } catch {}
 })();
-const { MODELS, classifyModel, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk, isPrivateHost, buildHeartbeatPrompt } = require('./lib');
+const { MODELS, classifyModel, routeOverride, budgetLimits, budgetState, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk, isPrivateHost, buildHeartbeatPrompt } = require('./lib');
 const recall = require('./recall');
 const ridx = require('./recall-index');         // persistent BM25 inverted index — recall AT SCALE (FTS5-equivalent)
 const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
@@ -215,8 +215,19 @@ let turnCounter = 0;
 const brain = {
   warmUp() { getSession(MODELS.sonnet).ask('Reply with exactly: ready', { silent: true }).catch(() => {}); }, // silent: never leak the warm-up into a client stream
   async ask(text) {
-    if (classifyModel(text) === MODELS.opus) { convoModel = MODELS.opus; softTurns = 0; }
+    const ov = routeOverride(text);                                   // explicit "/opus …" / "/sonnet …" wins (local turns only)
+    if (ov) { text = ov.text; convoModel = MODELS[ov.model]; softTurns = 0; }
+    else if (classifyModel(text) === MODELS.opus) { convoModel = MODELS.opus; softTurns = 0; }
     else if (convoModel === MODELS.opus && ++softTurns >= 3) { convoModel = MODELS.sonnet; softTurns = 0; } // don't stay pinned to Opus forever
+    // usage guardrail (opt-in URFAEL_BUDGET_*): in HARD mode, refuse a new turn once the rolling window is spent.
+    const bw = budgetWindow();
+    if (bw.state.level === 'over' && bw.limits.hard) {
+      logEvent({ ev: 'budget_block', pctTurns: bw.state.pctTurns, pctTok: bw.state.pctTok, windowH: bw.limits.windowH });
+      const msg = 'Usage budget reached for this ' + bw.limits.windowH + 'h window, sir — pausing new turns. Raise URFAEL_BUDGET_* or wait.';
+      try { notifyOwner(msg, { speak: true }); } catch {}
+      return { text: msg, model: convoModel, ms: 0, aborted: true, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0 } };
+    }
+    if (bw.state.level === 'warn') logEvent({ ev: 'budget_warn', peak: bw.state.peak, windowH: bw.limits.windowH });
     const model = convoModel;
     const turnId = ++turnCounter;
     lastLocalTurn = Date.now();   // heartbeat backs off while the owner is actively conversing
@@ -320,6 +331,21 @@ function turnCost(e, rates) { // USD est. for one {ev:'turn'} line; cache reads 
   const tin = e.tokIn || 0, tout = e.tokOut || 0, tcache = e.tokCache || 0;
   return (tin * tier.in + tcache * tier.in * 0.1 + tout * tier.out) / 1e6;
 }
+// Usage GUARDRAIL: count {ev:'turn'} turns + tokens within the rolling budget window (from the bounded log tail),
+// and classify against the owner's self-imposed limits. Dormant (level 'ok') unless URFAEL_BUDGET_* is set.
+function budgetWindow() {
+  const limits = budgetLimits(process.env);
+  if (!limits.active) return { limits, state: { level: 'ok', pctTurns: 0, pctTok: 0, peak: 0 }, turnsWin: 0, tokWin: 0 };
+  const cutoff = Date.now() - limits.windowH * 3600000;
+  let turnsWin = 0, tokWin = 0;
+  try {
+    for (const ln of tailLines(LOGFILE, 1 << 20)) {
+      if (!ln) continue; let e; try { e = JSON.parse(ln); } catch { continue; }
+      if (e.ev === 'turn' && e.t && Date.parse(e.t) >= cutoff) { turnsWin++; tokWin += (e.tokIn || 0) + (e.tokOut || 0); }
+    }
+  } catch {}
+  return { limits, state: budgetState({ turnsWin, tokWin }, limits), turnsWin, tokWin };
+}
 
 function vitals() {
   const today = new Date().toISOString().slice(0, 10);
@@ -341,7 +367,9 @@ function vitals() {
   // proxy, or Bedrock/Vertex on your own account) the Anthropic-rate meter is meaningless, so we zero it and
   // flag `local: true` rather than show a fabricated dollar figure. Only ADD fields here — the HUD depends on
   // the existing /vitals shape, so this stays backward-compatible.
-  return { warm: [...sessions.keys()], model: convoModel, mode: AGENT_MODE, turnsToday, avgMs, errors, tokToday, costToday: LOCAL_MODE ? 0 : Math.round(costToday * 100) / 100, local: LOCAL_MODE, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000) };
+  const bw = budgetWindow();
+  return { warm: [...sessions.keys()], model: convoModel, mode: AGENT_MODE, turnsToday, avgMs, errors, tokToday, costToday: LOCAL_MODE ? 0 : Math.round(costToday * 100) / 100, local: LOCAL_MODE, memCommits: memCommitCache.n, uptimeS: Math.round((Date.now() - START_MS) / 1000),
+    budget: bw.limits.active ? { level: bw.state.level, pctTurns: bw.state.pctTurns, pctTok: bw.state.pctTok, windowH: bw.limits.windowH, hard: bw.limits.hard } : null };
 }
 
 // ---- usage summary: tokens / turns / ESTIMATED cost over today / last 7d / last 30d ---------------
