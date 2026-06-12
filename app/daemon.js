@@ -26,7 +26,7 @@ const crypto = require('crypto');
     }
   } catch {}
 })();
-const { MODELS, classifyModel, routeOverride, budgetLimits, budgetState, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk, isPrivateHost, buildHeartbeatPrompt } = require('./lib');
+const { MODELS, classifyModel, routeOverride, budgetLimits, budgetState, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk, isPrivateHost, buildHeartbeatPrompt, addPrincipal, TEAM_CHANNELS, newPairCode, redeemPairCode } = require('./lib');
 const recall = require('./recall');
 const ridx = require('./recall-index');         // persistent BM25 inverted index — recall AT SCALE (FTS5-equivalent)
 const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
@@ -762,6 +762,34 @@ function addScript(spec) {
 }
 function removeScript(name) { const list = loadScripts(); const i = list.findIndex((s) => s.name === name); if (i < 0) return false; list.splice(i, 1); saveScripts(list); return true; }
 function getScript(name) { return loadScripts().find((s) => s.name === name) || null; }
+
+// ---- self-enroll pairing codes: owner mints a single-use code; a sender DMs it → enrolled as GUEST only -----
+const PAIRINGS_FILE = path.join(JDIR, 'pairings.json');
+const TEAM_FILE = path.join(JDIR, 'team.json');
+function loadPairings() { try { const j = JSON.parse(fs.readFileSync(PAIRINGS_FILE, 'utf8')); return Array.isArray(j) ? j : []; } catch { return []; } }
+function savePairings(list) { try { fs.mkdirSync(JDIR, { recursive: true }); const tmp = PAIRINGS_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(list, null, 2), { mode: 0o600 }); fs.renameSync(tmp, PAIRINGS_FILE); } catch {} }
+function mintPairing(spec) {
+  const channel = (spec && typeof spec.channel === 'string' && TEAM_CHANNELS.includes(spec.channel)) ? spec.channel : null;
+  const ttlMins = Math.min(Math.max(parseInt(spec && spec.ttlMins, 10) || 10, 1), 1440);
+  const pc = newPairCode(Date.now(), ttlMins * 60000, channel);
+  let list = loadPairings().filter((p) => p && typeof p.exp === 'number' && p.exp > Date.now()); // prune expired
+  list.push({ codeHash: pc.codeHash, exp: pc.exp, channel: pc.channel });
+  if (list.length > 16) list = list.slice(-16);                              // cap pending codes, drop oldest
+  savePairings(list);
+  return { code: pc.code, expISO: pc.expISO, channel: pc.channel, role: 'guest' };
+}
+function redeemPairing(channel, senderId, code) {
+  const pending = loadPairings();
+  const r = redeemPairCode(pending, channel, senderId, code, Date.now());
+  if (r.error) return r;
+  let team = {}; try { team = JSON.parse(fs.readFileSync(TEAM_FILE, 'utf8')); } catch {}
+  const { team: next, error } = addPrincipal(team, channel, r.principal);    // role is hard-'guest' from redeemPairCode
+  if (error) return { error };
+  try { const tmp = TEAM_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 }); fs.renameSync(tmp, TEAM_FILE); } catch {}
+  savePairings(pending.filter((p) => p.codeHash !== r.codeHash));            // single-use: burn the matched code
+  logEvent({ ev: 'pair_redeem', channel, principal: r.principal.id, role: 'guest' });
+  return { ok: true, role: 'guest' };
+}
 // Run a validated hook. 'notify' pushes the raw payload to the owner (no LLM). 'ask' runs the brain on the
 // payload in a no-egress, untrusted-framed sandbox (deliverCron's machinery, tightened) and delivers the result.
 function fireHook(hook, payload) {
@@ -1279,6 +1307,17 @@ const server = http.createServer(async (req, res) => {
     const r = await runShell(sc.script, { URFAEL_PREV: '' }, { args: Array.isArray(spec.args) ? spec.args : [], timeoutMs: 60000 });
     logEvent({ ev: 'script_run', name: m[1], exit: r.exitCode, out: r.out.length });
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ name: m[1], exitCode: r.exitCode, out: r.out }));
+  } else if (req.method === 'POST' && req.url === '/pair') {
+    // owner mints a single-use pairing code (owner-socket-only, same trust boundary as /cron). Shown ONCE.
+    const body = await readBody(req); let spec = {}; try { spec = JSON.parse(body); } catch {}
+    const r = mintPairing(spec);
+    logEvent({ ev: 'pair_mint', channel: r.channel || 'any' });
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(r));
+  } else if (req.method === 'POST' && req.url === '/pair/redeem') {
+    // a bridge forwards a non-roster sender's message here; if it's a valid code, enroll them as GUEST (only).
+    const body = await readBody(req); let spec = {}; try { spec = JSON.parse(body); } catch {}
+    const r = redeemPairing(typeof spec.channel === 'string' ? spec.channel : '', spec.senderId, typeof spec.code === 'string' ? spec.code : '');
+    res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(r));
   } else if (req.method === 'POST' && req.url === '/hooks') {
     // register a webhook event trigger: {name, action?:'ask'|'notify', deliver?:'notify'|'silent'|'push'}.
     // Returns the secret ONCE (only its hash is stored). The brain or the owner creates these via `urfael hook add`.

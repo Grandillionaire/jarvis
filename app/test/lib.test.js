@@ -435,6 +435,39 @@ test('cron: a garbage `then` is dropped, the parent still schedules', () => {
   assert.ok(c && !c.then, 'unusable then is omitted, parent survives');
 });
 
+// ---- SELF-ENROLL PAIRING CODES ------------------------------------------------------------------------
+test('pair: newPairCode mints an 8-char unambiguous code, role GUEST, stores only the hash', () => {
+  const { newPairCode } = require('../lib');
+  const pc = newPairCode(NOW, 600000, 'telegram');
+  assert.match(pc.code, /^[A-HJ-NP-Z2-9]{8}$/);          // no 0/O/1/I/L
+  assert.equal(pc.role, 'guest');
+  assert.match(pc.codeHash, /^[0-9a-f]{64}$/);
+  assert.notEqual(pc.codeHash, pc.code);                  // the plaintext is never the stored value
+  assert.equal(pc.channel, 'telegram');
+  assert.ok(pc.exp > NOW);
+});
+test('pair: redeemPairCode enrolls the exact code as GUEST and NEVER any higher role', () => {
+  const { newPairCode, redeemPairCode } = require('../lib');
+  const pc = newPairCode(NOW, 600000, 'telegram');
+  const pending = [{ codeHash: pc.codeHash, exp: pc.exp, channel: 'telegram' }];
+  const ok = redeemPairCode(pending, 'telegram', '999', pc.code, NOW);
+  assert.equal(ok.principal.role, 'guest');               // the ONLY role pairing can ever produce
+  assert.equal(ok.principal.id, '999');
+  assert.equal(ok.codeHash, pc.codeHash);                 // so the caller can burn this entry
+  assert.equal(redeemPairCode(pending, 'telegram', '999', pc.code.toLowerCase(), NOW).principal.role, 'guest'); // case-insensitive
+});
+test('pair: redeem is fail-closed — wrong/expired/wrong-channel/garbage code → error, never a principal', () => {
+  const { newPairCode, redeemPairCode } = require('../lib');
+  const pc = newPairCode(NOW, 600000, 'telegram');
+  const pending = [{ codeHash: pc.codeHash, exp: pc.exp, channel: 'telegram' }];
+  assert.ok(redeemPairCode(pending, 'telegram', '1', 'WRONGCODE', NOW).error);          // wrong code
+  assert.ok(redeemPairCode(pending, 'telegram', '1', pc.code, pc.exp + 1).error);        // expired
+  assert.ok(redeemPairCode(pending, 'discord', '1', pc.code, NOW).error);                // wrong channel
+  for (const bad of ['hello there', '', 'short', 'waytoolongcode', null, 7, undefined])
+    assert.ok(redeemPairCode(pending, 'telegram', '1', bad, NOW).error, JSON.stringify(bad));
+  assert.deepEqual(redeemPairCode('not-an-array', 'telegram', '1', pc.code, NOW), { error: 'no code' });
+});
+
 // ---- SAVED-SCRIPT LIBRARY -----------------------------------------------------------------------------
 test('script: normalizeScript accepts a clean slug+body, rejects bad names / over-long bodies', () => {
   const { normalizeScript } = require('../lib');

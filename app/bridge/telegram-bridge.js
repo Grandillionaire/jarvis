@@ -81,7 +81,11 @@ async function main() {
       const msg = u.message || u.edited_message;
       if (!msg || !msg.chat) continue;
       const principal = core.resolvePrincipal('telegram', msg.chat.id, roster); // ALLOWLIST, before the brain
-      if (!principal) { core.audit({ ev: 'telegram_drop', from: msg.chat && msg.chat.id }); continue; }
+      if (!principal) {
+        // self-enroll: a non-roster sender's message might be a pairing code → enroll as guest (daemon-decided)
+        if (msg.text) { const pr = await core.tryPair('telegram', msg.chat.id, msg.text); if (pr && pr.ok) { core.audit({ ev: 'telegram_pair', from: msg.chat.id }); try { await core.telegramSend(TOKEN, msg.chat.id, 'You are paired as a guest. Send a message to begin.'); } catch {} continue; } }
+        core.audit({ ev: 'telegram_drop', from: msg.chat && msg.chat.id }); continue;
+      }
       if (!msg.text && !msg.voice && !msg.audio) continue;
       if (!bucket.take()) { core.audit({ ev: 'telegram_ratelimited', principal: principal.name }); try { await core.telegramSend(TOKEN, principal.id, 'Rate limited — give me a second.'); } catch {} continue; }
       if (msg.text) handle(msg.text, principal).catch(() => {});

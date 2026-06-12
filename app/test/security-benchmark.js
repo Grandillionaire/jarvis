@@ -104,6 +104,15 @@ async function main() {
   check('team mode: NO role escalates a remote turn to "local"', roleAttempts.every((r) => lib.profileFor(r).name !== 'local'), roleAttempts.length + ' role attempts, all sandboxed');
   check('team mode: a guest is strictly more restricted than a member (no Grep/Glob)', !lib.profileFor('guest').allowedTools.some((t) => /Grep|Glob|Bash|Write|WebFetch/.test(t)) && lib.profileFor('member').allowedTools.includes('Grep'));
   check('team mode: a non-roster sender is DROPPED (allowlist fail-closed)', lib.resolvePrincipal({ telegram: [{ id: '1', role: 'owner' }] }, 'telegram', '999') === null && lib.resolvePrincipal({ telegram: [{ id: '1', role: 'owner' }] }, 'telegram', '1').role === 'owner');
+  // SELF-ENROLL: a pairing code can ONLY mint the most-restricted role — there is no parameter to request owner/
+  // member, so a code (even if leaked) can never enroll a privileged principal. Single-use + TTL + constant-time.
+  check('a pairing code self-enrolls ONLY a guest — never a privileged role', (() => {
+    const pc = lib.newPairCode(1000, 600000, 'telegram');
+    if (pc.role !== 'guest') return false;
+    const r = lib.redeemPairCode([{ codeHash: pc.codeHash, exp: pc.exp, channel: 'telegram' }], 'telegram', '42', pc.code, 2000);
+    return r.principal && r.principal.role === 'guest' && !/owner|member/i.test(JSON.stringify(r))
+      && !!lib.redeemPairCode([{ codeHash: pc.codeHash, exp: pc.exp, channel: 'telegram' }], 'telegram', '42', 'WRONGXXX', 2000).error;
+  })(), 'role hard-coded guest in lib; wrong/expired code fail-closed');
   // VERIFIED MULTI-PROVIDER: safety is enforced by the HARNESS, not the model. A remote turn's no-egress
   // read-only profile is identical whether the brain is Claude or a 3rd-party/local model behind a proxy —
   // configuring a provider can't relax the sandbox, so the guarantees hold whatever model answers.

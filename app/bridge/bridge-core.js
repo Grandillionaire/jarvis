@@ -79,6 +79,19 @@ function notifyDaemon(text) {
   });
 }
 
+// SELF-ENROLL: a non-roster sender's message MIGHT be a pairing code. Forward it to the daemon's /pair/redeem;
+// on success the sender is enrolled as a GUEST (the daemon hard-codes the role). Returns { ok } | { error }.
+function tryPair(channel, senderId, text) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify({ channel, senderId: String(senderId), code: String(text || '').trim() });
+    const r = http.request({ socketPath: SOCK, method: 'POST', path: '/pair/redeem', headers: { 'Content-Type': 'application/json' }, timeout: 15000 }, (res) => {
+      let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { resolve({ error: 'bad' }); } });
+    });
+    r.on('error', () => resolve({ error: 'unreachable' })); r.on('timeout', () => { r.destroy(); resolve({ error: 'timeout' }); });
+    r.end(payload);
+  });
+}
+
 function stripSpoken(t) { return (t || '').replace(/\[\/?SPOKEN\]/gi, '').trim(); }
 
 // Token bucket: `capacity` burst, refilling `refillPerMin` per minute. take() => boolean.
@@ -192,4 +205,4 @@ async function notifyAll(text) {
   if (process.platform === 'darwin' && cfg.IMESSAGE_OWNER_HANDLE) { try { await imessageSend(cfg.IMESSAGE_OWNER_HANDLE, text); } catch {} }
 }
 
-module.exports = { JDIR, SOCK, ENVF, TEAMF, AUDIT, loadEnv, loadRoster, resolvePrincipal, audit, askDaemon, notifyDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };
+module.exports = { JDIR, SOCK, ENVF, TEAMF, AUDIT, loadEnv, loadRoster, resolvePrincipal, tryPair, audit, askDaemon, notifyDaemon, stripSpoken, TokenBucket, httpsJson, telegramSend, discordDM, slackApi, slackPost, imessageSend, notifyAll, httpsDownload, transcribeLocal };

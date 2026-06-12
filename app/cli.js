@@ -10,7 +10,7 @@
 //   urfael remind "text" --in 20 [--repeat daily|weekly|<mins>]   or  --at "2026-06-11T15:00"
 //   urfael sessions search <query>             full-text search of every past conversation
 //   urfael learn [trusted|proposed|retired]    the learning ledger — what it learned, verified, and pruned (with confidence)
-//   urfael team [add <channel> <id> [name] [role] | remove <channel> <id>]   manage the team roster (principals + roles)
+//   urfael team [add <channel> <id> [name] [role] | remove <channel> <id> | pair [channel] [--ttl <mins>]]   manage the roster; `pair` mints a single-use guest code
 //   urfael audit [--json]                      team-mode activity trail (who/when/channel/sandbox) for an admin/auditor
 //   urfael cron [add "<prompt>" --cron "*/15 9-17 * * 1-5" | --days "mon,wed,fri" --at 07:30 | --daily-at HH:MM | --in N | --repeat daily [--then "<prompt>"] [--script "<cmd>"]] [list|cancel <id>|run <id>]
 //                                              scheduled jobs — runs the brain (or, --script, a no-LLM shell cmd) on a schedule,
@@ -321,6 +321,16 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
     const readTeam = () => { try { return JSON.parse(fs.readFileSync(TEAMF, 'utf8')); } catch { return {}; } };
     const writeTeam = (t) => { fs.mkdirSync(path.dirname(TEAMF), { recursive: true }); fs.writeFileSync(TEAMF + '.tmp', JSON.stringify(t, null, 2) + '\n', { mode: 0o600 }); fs.renameSync(TEAMF + '.tmp', TEAMF); };
     const sub = rest[0];
+    if (sub === 'pair') {
+      // urfael team pair [channel] [--ttl <mins>] — mint a single-use code; the new person DMs it to enroll as a GUEST.
+      const channel = rest[1] && !rest[1].startsWith('--') ? rest[1] : undefined;
+      const spec = {}; if (channel) spec.channel = channel; if (flag(rest, '--ttl')) spec.ttlMins = Number(flag(rest, '--ttl'));
+      const r = await req('POST', '/pair', spec);
+      if (!r || r.error) { console.error('✗ ' + ((r && r.error) || 'failed')); process.exit(1); }
+      console.log(gold('✓ pairing code  ' + r.code) + dim('  (guest only · expires ' + (r.expISO || '').replace('T', ' ').slice(0, 16) + (r.channel ? ' · ' + r.channel : '') + ')'));
+      console.log(dim('  share it; the new person DMs exactly this code to your bot to self-enroll as a guest.'));
+      return;
+    }
     if (sub === 'add' && rest[1] && rest[2]) {
       // urfael team add <channel> <id> [name] [role]
       const [, channel, id, name, role] = rest;

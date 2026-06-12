@@ -51,7 +51,7 @@ these honest caveats — read the `✦`/`✓` marks below through this lens:
 |---|---|---|---|
 | Count | 24+ | ~21 adapters | 8 first-class (Telegram, Discord, Slack, iMessage, Email, Matrix, Signal, WhatsApp) **+ a universal `relay` channel** (`urfael hook add --action relay`): one verified code path turns ANY platform with an in/out webhook — Teams, Mattermost, Google Chat, **or Zapier/n8n/Make → hundreds of apps** — into a two-way channel, **plus** Matrix as a federation hub (its bridge ecosystem reaches Telegram/Discord/WhatsApp/IRC/SMS/…). Breadth is architectural, not 21 bespoke adapters to maintain |
 | Voice memos | ✓ | ✓ | ✓ (local whisper, never cloud) |
-| Pairing/allowlist security | pairing codes | pairing codes | ✦ **team mode**: per-channel roster of allowlisted principals + roles, role only NARROWS the sandbox (forged role never reaches local), per-principal attribution + `urfael audit` trail. See docs/TEAM-MODE.md |
+| Pairing/allowlist security | pairing codes | pairing codes | ✦ **team mode** + **self-enroll pairing** (`urfael team pair`): owner mints a single-use, TTL-bounded code; a new sender DMs it and is enrolled as a **guest ONLY** (the role is hard-coded — a code can never mint owner/member, even if leaked), redemption constant-time + single-use. Plus the per-channel roster, role-only-narrows sandbox (forged role never reaches local), per-principal attribution + `urfael audit`. See docs/TEAM-MODE.md |
 | Next | — | — | (Telegram/Discord/Slack/iMessage/Email all shipped; owner-allowlisted + auto-sandboxed) |
 
 ## Memory & recall
