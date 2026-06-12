@@ -38,7 +38,7 @@ function loadOrCreateToken() {
   try { fs.chmodSync(TOKENF, 0o600); } catch {}            // belt-and-suspenders (umask can loosen the mode arg)
   return t;
 }
-const TOKEN = loadOrCreateToken();
+let TOKEN = ''; // set in the bootstrap block below (deferred so the module can be require()'d for tests)
 
 // Constant-time, length-checked compare. timingSafeEqual throws on length mismatch, so guard length FIRST —
 // without a length-dependent early return that could leak the token length via timing.
@@ -254,15 +254,22 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'not found', type: 'invalid_request_error', code: null, param: null } })); // no fs lookup, ever
 });
 
-// Refuse to run if we can't bind loopback (a bind failure must NOT silently fall through to a wider iface).
-server.on('error', (e) => { process.stderr.write('urfael api: cannot bind ' + HOST + ':' + PORT + ' — ' + ((e && e.message) || e) + '\n'); process.exit(1); });
-server.listen(PORT, HOST, () => {
-  // NEVER print the token to stdout — under launchd stdout is a log file. The token is a full-power credential
-  // (the brain treats /v1/chat/completions as the local owner). It lives only in the 0600 token file; tell the
-  // user where to read it. `urfael serve` reads it and prints the base URL + token path to YOUR terminal.
-  process.stdout.write('Urfael OpenAI-compatible API on http://' + HOST + ':' + PORT + '/v1\n');
-  process.stdout.write('  bearer token (0600): ' + TOKENF + '   (read it from that file; never logged)\n');
-  process.stdout.write('  point any OpenAI client at the base URL above with that token as the API key.\n');
-});
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
+// Bootstrap (only when run directly — NOT on require, so the pure functions below are unit-testable without
+// minting a token or binding a port). Refuse to run if we can't bind loopback (a bind failure must NOT
+// silently fall through to a wider iface).
+if (require.main === module) {
+  TOKEN = loadOrCreateToken();
+  server.on('error', (e) => { process.stderr.write('urfael api: cannot bind ' + HOST + ':' + PORT + ' — ' + ((e && e.message) || e) + '\n'); process.exit(1); });
+  server.listen(PORT, HOST, () => {
+    // NEVER print the token to stdout — under launchd stdout is a log file. The token is a full-power credential
+    // (the brain treats /v1/chat/completions as the local owner). It lives only in the 0600 token file; tell the
+    // user where to read it. `urfael serve` reads it and prints the base URL + token path to YOUR terminal.
+    process.stdout.write('Urfael OpenAI-compatible API on http://' + HOST + ':' + PORT + '/v1\n');
+    process.stdout.write('  bearer token (0600): ' + TOKENF + '   (read it from that file; never logged)\n');
+    process.stdout.write('  point any OpenAI client at the base URL above with that token as the API key.\n');
+  });
+  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGINT', () => process.exit(0));
+}
+// Pure helpers exported for unit tests (the SSE [SPOKEN]-strip path is the trickiest code in this file).
+module.exports = { buildPrompt, stripSpoken, safeRawPrefix, flattenContent };
