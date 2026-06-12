@@ -197,6 +197,20 @@ async function main() {
   check('a webhook "ask" action runs NO-EGRESS (Read/Grep/Glob — no WebFetch/Write/Bash)', /allowedTools: 'Read,Grep,Glob'/.test(daemonSrc) && /function fireHook/.test(daemonSrc), 'an attacker-controlled payload has no network/shell/write to abuse');
   check('the hook secret is stored HASHED, never in plaintext', /secretHash: hashHookSecret\(secret\)/.test(daemonSrc), 'sha256 in the registry; plaintext shown once at creation');
   check('an attacker-steered result can\'t arg-inject the notifier (leading "-" neutralized)', /clean\[0\] === '-'/.test(daemonSrc), 'a brain result starting with "-" is defanged before `say`/notify-send');
+  // RELAY (the universal two-way channel): the reply destination is OWNER-SET at creation, never derived from the
+  // inbound payload — so a prompt-injected message can't redirect Urfael's answer to an attacker. The outbound
+  // auth token is never echoed back in the hook list.
+  check('a relay reply URL is OWNER-SET (registry), never taken from the inbound payload', /job\.replyUrl = hook\.replyUrl/.test(daemonSrc) && /postReply\(job\.replyUrl, job\.replyAuth/.test(daemonSrc), 'an injected message can\'t redirect the reply to an attacker');
+  const relayCreate = await sock('POST', '/hooks', { name: 'relay-sec', action: 'relay', replyUrl: 'https://example.com/x', replyAuth: 'Bearer s3cret-outbound' });
+  let rid = ''; try { rid = JSON.parse(relayCreate.raw).id; } catch {}
+  check('a relay needs a valid owner-set http(s) reply URL (fail-closed)', (await sock('POST', '/hooks', { name: 'bad', action: 'relay' })).status === 400, 'no reply URL → refused, never a relay with nowhere safe to answer');
+  // SSRF (red-team): the reply body is the brain's output over an attacker-controlled message, so a private/
+  // loopback/metadata replyUrl would be an internal write primitive — refused at creation (and again at send).
+  check('a relay reply URL to a private/loopback/metadata host is REFUSED (SSRF guard, shared with skillhub)',
+    (await sock('POST', '/hooks', { name: 'ssrf', action: 'relay', replyUrl: 'http://169.254.169.254/latest/meta-data' })).status === 400
+    && (await sock('POST', '/hooks', { name: 'ssrf2', action: 'relay', replyUrl: 'http://127.0.0.1:9000/x' })).status === 400, 'no POST to 127/10/192.168/169.254/::1');
+  check('the relay outbound auth token never leaks in the hook list', !/replyAuth|s3cret-outbound/i.test((await sock('GET', '/hooks')).raw), 'list shows only id/name/action/deliver/createdAt');
+  if (rid) await sock('POST', '/hook/' + rid + '/delete');
   if (hid) await sock('POST', '/hook/' + hid + '/delete'); // cleanup the test hook
 
   // ── teardown + verdict ────────────────────────────────────────────────────

@@ -17,7 +17,9 @@
 //                                              delivers the result, and chains a --then follow-up on completion
 //   urfael serve [--token]                     start the OpenAI-compatible local API (Open WebUI / any OpenAI client)
 //   urfael hooks                               start the loopback webhook receiver (event triggers) — prints its URL
-//   urfael hook add "<name>" [--action ask|notify] [--deliver notify|silent|push]   register a webhook (prints the secret once)
+//   urfael hook add "<name>" [--action ask|notify|relay] [--reply-url <url> --reply-auth <hdr>] [--deliver notify|silent|push]
+//                                              register a webhook (prints the secret once). relay = two-way chat channel: any platform
+//                                              with an in/out webhook (Teams/Mattermost/Zapier/n8n/…) → the reply posts to --reply-url
 //   urfael hook [list | rm <id>]               list / remove webhook event triggers
 //   urfael import [--from openclaw|hermes] [--apply]   migrate memory + skills from another assistant (dry-run by default)
 //   urfael skills list                         your installed skills (name + description)
@@ -270,12 +272,15 @@ function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i
       const spec = { name };
       if (flag(rest, '--action')) spec.action = flag(rest, '--action');
       if (flag(rest, '--deliver')) spec.deliver = flag(rest, '--deliver');
+      if (flag(rest, '--reply-url')) spec.replyUrl = flag(rest, '--reply-url');   // relay: where the brain's reply is posted (owner-set)
+      if (flag(rest, '--reply-auth')) spec.replyAuth = flag(rest, '--reply-auth'); // relay: optional outbound Authorization header
       const r = await req('POST', '/hooks', spec);
       if (!r || r.error) { console.error('✗ ' + ((r && r.error) || 'failed')); process.exit(1); }
       const port = parseInt(process.env.URFAEL_HOOKS_PORT, 10) || 7718;
       console.log(gold('✓ webhook ' + r.id) + dim('  action=' + r.action + ' · deliver=' + r.deliver));
       console.log('  URL     ' + gold(`http://127.0.0.1:${port}/hook/${r.id}`));
       console.log('  secret  ' + gold(r.secret) + dim('  (shown once — store it)'));
+      if (r.replyUrl) console.log('  reply→  ' + gold(r.replyUrl) + dim('  (relay posts the answer here)'));
       console.log(dim('  test:   ') + `curl -X POST -H "X-Urfael-Hook: ${r.secret}" --data 'hello' http://127.0.0.1:${port}/hook/${r.id}`);
       console.log(dim('  start the receiver if you have not:  ') + gold('urfael hooks'));
       return;

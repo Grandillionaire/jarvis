@@ -367,6 +367,23 @@ test('hook: normalize is fail-closed (unusable spec → null; unknown action/del
   assert.equal(normalizeHook({ name: 'x', action: 'Bash' }).action, 'ask');
   assert.equal(normalizeHook({ name: 'x', deliver: 'email' }).deliver, 'notify');
 });
+test('hook: a RELAY needs a valid owner-set http(s) replyUrl (fail-closed without one)', () => {
+  const r = normalizeHook({ name: 'teams', action: 'relay', replyUrl: 'https://example.com/hook/abc', replyAuth: 'Bearer xyz' });
+  assert.equal(r.action, 'relay');
+  assert.equal(r.replyUrl, 'https://example.com/hook/abc');
+  assert.equal(r.replyAuth, 'Bearer xyz');
+  // a relay with no / a bad / a non-http / an SSRF reply URL is unusable → null (never fires with nowhere safe to reply)
+  for (const bad of [{ name: 'x', action: 'relay' }, { name: 'x', action: 'relay', replyUrl: '' },
+    { name: 'x', action: 'relay', replyUrl: 'not a url' }, { name: 'x', action: 'relay', replyUrl: 'file:///etc/passwd' },
+    { name: 'x', action: 'relay', replyUrl: 'ftp://host/x' }, { name: 'x', action: 'relay', replyUrl: 7 },
+    // SSRF — the reply body is attacker-steered, so a private/loopback/metadata target is a write primitive → refused
+    { name: 'x', action: 'relay', replyUrl: 'http://127.0.0.1/x' }, { name: 'x', action: 'relay', replyUrl: 'http://169.254.169.254/latest/meta-data' },
+    { name: 'x', action: 'relay', replyUrl: 'https://localhost:9000/x' }, { name: 'x', action: 'relay', replyUrl: 'http://10.0.0.5/x' },
+    { name: 'x', action: 'relay', replyUrl: 'http://192.168.1.1/x' }, { name: 'x', action: 'relay', replyUrl: 'http://[::1]/x' }])
+    assert.equal(normalizeHook(bad), null, JSON.stringify(bad));
+  // ask/notify never carry a replyUrl even if one is passed (no outbound target for them)
+  assert.equal(normalizeHook({ name: 'x', action: 'ask', replyUrl: 'https://evil/x' }).replyUrl, undefined);
+});
 test('hook: secret is checked by HASH, constant-time, and a wrong/garbage secret never validates', () => {
   const secret = 'a'.repeat(64);
   const stored = hashHookSecret(secret);

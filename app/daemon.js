@@ -26,7 +26,7 @@ const crypto = require('crypto');
     }
   } catch {}
 })();
-const { MODELS, classifyModel, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk } = require('./lib');
+const { MODELS, classifyModel, segmentSentences, resolveProfile, profileFor, normalizeHook, hashHookSecret, hookSecretOk, isPrivateHost } = require('./lib');
 const recall = require('./recall');
 const ridx = require('./recall-index');         // persistent BM25 inverted index — recall AT SCALE (FTS5-equivalent)
 const embed = require('./embed');               // optional local-first embeddings client (semantic recall)
@@ -560,11 +560,30 @@ const CRON_ALLOWED_TOOLS = 'Read,Grep,Glob,WebFetch,WebSearch';
 const SCRIPT_CRON_ON = process.env.URFAEL_SCRIPT_CRON === '1';
 const { CHAIN_MAX } = require('./lib');
 
+// POST a relay reply to the OWNER-CONFIGURED outbound webhook (a relay hook's replyUrl). The destination is fixed
+// at hook creation and never derived from the inbound payload, so an injected message can't redirect it. The brain
+// stays no-egress — the DAEMON sends this, over plain http/https with an optional owner-set Authorization header.
+// {text} is the lingua-franca body that Slack/Teams/Mattermost/Google-Chat/Discord incoming webhooks all accept.
+function postReply(url, auth, text) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return;
+    if (isPrivateHost(u.hostname)) { logEvent({ ev: 'relay_blocked', why: 'private_host' }); return; } // SSRF: never POST to loopback/RFC1918/metadata, even if a corrupt registry slipped one in
+    const body = JSON.stringify({ text: String(text || '(no reply)').slice(0, 3500) });
+    const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
+    if (auth) headers.Authorization = auth;
+    const req = mod.request({ hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: (u.pathname || '/') + (u.search || ''), method: 'POST', headers, timeout: 15000 }, (res) => res.resume());
+    req.on('error', () => {}); req.on('timeout', () => { try { req.destroy(); } catch {} });
+    req.end(body);
+  } catch {}
+}
 // Shared post-completion: release the single-flight, deliver the result, then fire the chained `then` (if any).
 function afterCron(job, txt, fireEv) {
   cronRunning = false;
-  logEvent({ ev: fireEv, id: job.id, kind: job.kind || 'agent', deliver: job.deliver, repeat: job.repeat || null, out: (txt || '').length });
-  if (job.deliver !== 'silent' && txt) notifyOwner(txt.slice(0, 350), { speak: job.deliver !== 'push' });
+  logEvent({ ev: fireEv, id: job.id, kind: job.kind || 'agent', deliver: job.deliver, relay: !!job.replyUrl, out: (txt || '').length });
+  if (job.replyUrl) postReply(job.replyUrl, job.replyAuth, txt);                                   // relay → the channel (owner-set URL)
+  else if (job.deliver !== 'silent' && txt) notifyOwner(txt.slice(0, 350), { speak: job.deliver !== 'push' }); // else → the owner
   fireChain(job, txt);
 }
 // Chaining: a job's normalized `then` fires ONCE on completion, with the parent's output threaded in (as
@@ -669,9 +688,11 @@ function addHook(spec) {
   if (list.length >= HOOKS_MAX) return null;
   const id = 'hk_' + crypto.randomBytes(6).toString('hex');             // 12 hex chars — matches the route + receiver regex
   const secret = crypto.randomBytes(32).toString('hex');               // 256-bit; returned ONCE, only its hash is stored
-  list.push({ id, name: n.name, action: n.action, deliver: n.deliver, secretHash: hashHookSecret(secret), createdAt: new Date().toISOString() });
+  const rec = { id, name: n.name, action: n.action, deliver: n.deliver, secretHash: hashHookSecret(secret), createdAt: new Date().toISOString() };
+  if (n.action === 'relay') { rec.replyUrl = n.replyUrl; if (n.replyAuth) rec.replyAuth = n.replyAuth; } // OWNER-set outbound target
+  list.push(rec);
   saveHooks(list);
-  return { id, name: n.name, action: n.action, deliver: n.deliver, secret };
+  return { id, name: n.name, action: n.action, deliver: n.deliver, secret, replyUrl: n.replyUrl };
 }
 function removeHook(id) { const list = loadHooks(); const i = list.findIndex((h) => h.id === id); if (i < 0) return false; list.splice(i, 1); saveHooks(list); return true; }
 function getHook(id) { return loadHooks().find((h) => h.id === id) || null; }
@@ -688,14 +709,21 @@ function fireHook(hook, payload) {
     }
     return;
   }
-  const intro =
-    '[Automated webhook trigger "' + hook.name + '" fired — the user is NOT speaking and will not see this turn. ' +
-    'Do NOT reply conversationally. Read the webhook payload below and end with ONE short plain-text line ' +
-    'summarizing what arrived and whether it needs the user\'s attention (no markdown, no [SPOKEN] tags).]';
-  // NO-EGRESS on purpose: the payload is fully attacker-controlled, so a hook 'ask' gets Read/Grep/Glob only —
-  // no WebFetch/WebSearch (can't be turned into an exfil channel), no Write, no Bash. Result goes only to the owner.
-  deliverCron({ id: 'hook:' + hook.id, prompt: String(payload || '(empty payload)').slice(0, 8000), deliver: hook.deliver },
-    { intro, ev: 'hook_fire', allowedTools: 'Read,Grep,Glob' });
+  const relay = hook.action === 'relay';
+  const intro = relay
+    ? '[Incoming chat message relayed from an external channel named "' + hook.name + '". Reply as Urfael would in ' +
+      'a chat: a concise, helpful, plain-text answer to the message below (no markdown headers, no [SPOKEN] tags). ' +
+      'Your reply is sent back to that channel.]'
+    : '[Automated webhook trigger "' + hook.name + '" fired — the user is NOT speaking and will not see this turn. ' +
+      'Do NOT reply conversationally. Read the webhook payload below and end with ONE short plain-text line ' +
+      'summarizing what arrived and whether it needs the user\'s attention (no markdown, no [SPOKEN] tags).]';
+  // NO-EGRESS on purpose: the payload is fully attacker-controlled, so the brain gets Read/Grep/Glob only — no
+  // WebFetch/WebSearch (can't be turned into an exfil channel), no Write, no Bash. For 'ask' the result goes to the
+  // OWNER; for 'relay' the DAEMON (not the brain) posts the result to the OWNER-SET replyUrl — the brain never
+  // sees or controls the destination, so an injected payload can't redirect the reply.
+  const job = { id: 'hook:' + hook.id, prompt: String(payload || '(empty payload)').slice(0, 8000), deliver: hook.deliver };
+  if (relay) { job.replyUrl = hook.replyUrl; if (hook.replyAuth) job.replyAuth = hook.replyAuth; }
+  deliverCron(job, { intro, ev: 'hook_fire', allowedTools: 'Read,Grep,Glob' });
 }
 
 // ---- heartbeat: periodic proactive check (opt-in via URFAEL_HEARTBEAT_MINS) ----------------------
@@ -1163,7 +1191,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     let spec = {}; try { spec = JSON.parse(body); } catch {}
     const r = addHook(spec);
-    if (!r) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'need {name, action?:ask|notify, deliver?:notify|silent|push} (max ' + HOOKS_MAX + ' hooks)' })); return; }
+    if (!r) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'need {name, action?:ask|notify|relay, deliver?:notify|silent|push, replyUrl(for relay)} (max ' + HOOKS_MAX + ' hooks)' })); return; }
     logEvent({ ev: 'hook_create', id: r.id, action: r.action, deliver: r.deliver });
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(r));
   } else if (req.url === '/hooks') {

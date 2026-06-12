@@ -194,6 +194,8 @@ One brain, four ways to reach it — all thin clients of the same daemon, so a c
 
 Drive Urfael from **8 owner-allowlisted channels** — text or **voice memos** (transcribed locally, never by a cloud STT). Every one is sandboxed read-only by default and gated to your id before the brain sees anything.
 
+Need a channel that isn't in the eight? Don't wait for a bespoke adapter — use the **universal `relay`** (`urfael hook add --action relay --reply-url <webhook>`). One verified, sandboxed code path turns *any* platform with an in/out webhook into a two-way channel: Microsoft Teams, Mattermost, Google Chat, or **Zapier / n8n / Make**, which themselves reach hundreds of apps. The reply destination is fixed by you at setup (never read from the incoming message, and SSRF-filtered), the brain stays no-egress, and the daemon does the outbound post. That's how Urfael beats a pile of 21 hand-maintained adapters — breadth is *architecture*, not code to babysit. (Matrix doubles as a federation hub too: in a Matrix room, its bridge ecosystem reaches Telegram/Discord/WhatsApp/IRC/SMS.)
+
 <details>
 <summary>Telegram · Discord · Slack · iMessage · Email (draft-only) · Matrix · Signal · WhatsApp — setup notes</summary>
 

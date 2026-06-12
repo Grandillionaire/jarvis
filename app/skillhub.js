@@ -141,16 +141,9 @@ function scan(text) {
 // Fetch a single .md over https (no redirects to other hosts blindly; capped). Resolves
 // { contentType, body } or rejects. Refuses non-https and oversize bodies fail-closed.
 // SSRF guard: refuse loopback / link-local / private (RFC1918, CGNAT, ULA) hosts so a redirect can't aim the
-// fetch at 127.0.0.1, 169.254.169.254 (cloud metadata), or an internal box.
-function isPrivateHost(h) {
-  h = String(h || '').toLowerCase().replace(/^\[|\]$/g, '');
-  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) { const [a, b] = [+m[1], +m[2]];
-    return a === 127 || a === 10 || a === 0 || (a === 169 && b === 254) || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127); }
-  if (/^(::1|fe80:|fc|fd)/.test(h)) return true; // IPv6 loopback / link-local / ULA
-  return false;
-}
+// fetch at 127.0.0.1, 169.254.169.254 (cloud metadata), or an internal box. Single source of truth in lib.js
+// (shared with the webhook-relay reply sender), so the guard can't drift between the two outbound paths.
+const { isPrivateHost } = require('./lib');
 function fetchMd(url, depth = 0) {
   return new Promise((resolve, reject) => {
     let u;

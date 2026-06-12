@@ -27,7 +27,7 @@
 ## Channels
 | | OpenClaw | Hermes | Urfael |
 |---|---|---|---|
-| Count | 24+ | ~21 adapters | 8 (Telegram, Discord, Slack, iMessage, Email, Matrix, Signal, WhatsApp) + notify push |
+| Count | 24+ | ~21 adapters | 8 first-class (Telegram, Discord, Slack, iMessage, Email, Matrix, Signal, WhatsApp) **+ a universal `relay` channel** (`urfael hook add --action relay`): one verified code path turns ANY platform with an in/out webhook — Teams, Mattermost, Google Chat, **or Zapier/n8n/Make → hundreds of apps** — into a two-way channel, **plus** Matrix as a federation hub (its bridge ecosystem reaches Telegram/Discord/WhatsApp/IRC/SMS/…). Breadth is architectural, not 21 bespoke adapters to maintain |
 | Voice memos | ✓ | ✓ | ✓ (local whisper, never cloud) |
 | Pairing/allowlist security | pairing codes | pairing codes | ✦ **team mode**: per-channel roster of allowlisted principals + roles, role only NARROWS the sandbox (forged role never reaches local), per-principal attribution + `urfael audit` trail. See docs/TEAM-MODE.md |
 | Next | — | — | (Telegram/Discord/Slack/iMessage/Email all shipped; owner-allowlisted + auto-sandboxed) |
@@ -119,6 +119,6 @@ SHIPPED since (the "every Hermes feature" sweep, each adversarially reviewed + t
 REMAINING — only VERIFICATION-blocked residuals + deliberate non-goals (*italic*); no missing Hermes *capability*:
 1. *200+ model providers* — conflicts with the claude-CLI harness (speed, flat-rate, the clean ToS story); other models work today via a documented proxy on the user's own keys.
 2. *Serverless exec backends (Modal/Daytona)* — paid third-party infra; SSH covers remote.
-3. Channel breadth beyond 8 (Mattermost/Teams/etc.) — the multi-channel capability is at parity; the extra adapters are long-tail and **can't be verified without the owner's account**, so we won't ship them claiming they work.
+3. Channel breadth — **answered architecturally** (the universal `relay` channel + Matrix federation hub), so breadth is one verified code path, not 21 bespoke adapters. A few platforms still warrant a *native* first-class bridge (richer than a webhook relay); those are account-gated to verify, so we won't ship them claiming they work.
 4. Windows port — code-complete (notify/voice branches), **hardware-gated** verification; richer TUI (modal pickers, live multi-session) is polish.
 5. *Battle-testing at scale* — only real users and time add this.

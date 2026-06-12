@@ -18,12 +18,20 @@ a port**, every hook carries its own secret, and a trigger can never gain a shel
 - **Per-hook secret.** Each hook gets a 256-bit secret, shown **once** at creation. Only its `sha256` hash is
   stored; the daemon validates the presented secret **constant-time**. A wrong secret — or a fire to a hook id
   that does not exist — returns an identical `401`, so the endpoint can't be used to enumerate hooks.
-- **The action is weaker than a chat message.** A hook does one of two things:
+- **The action is weaker than a chat message.** A hook does one of three things:
   - `notify` — push the payload to you (notification + spoken + phone). No model runs.
   - `ask` — run the brain on the payload, but in a **no-egress** sandbox: `Read`/`Grep`/`Glob` only — **no
     `WebFetch`/`WebSearch`, no `Write`/`Edit`, no `Bash`** — with the payload framed as UNTRUSTED data, and the
     result delivered **only to you**. So a poisoned payload has no secret to read (the vault credential-deny
     holds), no network to exfiltrate to, no shell, and no third-party recipient.
+  - `relay` — the **universal two-way channel**. The brain runs in the *same* no-egress sandbox, and then the
+    **daemon** (not the brain) posts the reply to an **owner-configured** outbound webhook (`--reply-url`, with an
+    optional `--reply-auth` header). This is how *any* platform becomes an Urfael channel through one code path —
+    Teams, Mattermost, Google Chat, or **Zapier / n8n / Make** (which themselves bridge hundreds of apps): point
+    their outgoing webhook at your hook URL, and their incoming webhook at `--reply-url`. The keystones:
+    the reply destination is **fixed at creation, never read from the inbound payload** (a prompt-injected message
+    can't redirect Urfael's answer), the outbound URL is **SSRF-filtered** (no loopback / RFC1918 / cloud-metadata
+    targets — use a public webhook or your own tunnel), and the brain still never gets egress.
 
 ## Use it
 
